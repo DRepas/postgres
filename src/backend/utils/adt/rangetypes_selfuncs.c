@@ -1236,10 +1236,10 @@ range_bound_qsort_cmp(const void *a1, const void *a2, void *arg)
 }
 
 /*
- * calc_joint_hist_lt_selectivity -- calculate join cardinality for range operators using histogram data
+ * calc_join_hist_lt_selectivity -- calculate join cardinality for range operators using histogram data
  */
 static double
-calc_joint_hist_lt_selectivity(TypeCacheEntry *typcache,
+calc_join_hist_lt_selectivity(TypeCacheEntry *typcache,
 							   const RangeBound *hist1, int nhist1,
 							   double null_frac1, double empty_frac1,
 							   const RangeBound *hist2, int nhist2,
@@ -1442,10 +1442,10 @@ rangejoinsel(PG_FUNCTION_ARGS)
 				 * B.upper < A.lower
 				 */
 				selec = 1;
-				selec -= calc_joint_hist_lt_selectivity(typcache,
+				selec -= calc_join_hist_lt_selectivity(typcache,
 														hist1_upper, nhist1, null_frac1, empty_frac1,
 														hist2_lower, nhist2, null_frac2, empty_frac2);
-				selec -= calc_joint_hist_lt_selectivity(typcache,
+				selec -= calc_join_hist_lt_selectivity(typcache,
 														hist2_upper, nhist2, null_frac2, empty_frac2,
 														hist1_lower, nhist1, null_frac1, empty_frac1);
 				break;
@@ -1462,7 +1462,7 @@ rangejoinsel(PG_FUNCTION_ARGS)
 				 * Higher accuracy would require us to add  P(lower1 = lower2) *
 				 * P(upper2 <= upper1)
 				 */
-				selec = calc_joint_hist_lt_selectivity(typcache,
+				selec = calc_join_hist_lt_selectivity(typcache,
 													   hist1_lower, nhist1, null_frac1, empty_frac1,
 													   hist2_lower, nhist2, null_frac2, empty_frac2);
 				break;
@@ -1479,7 +1479,7 @@ rangejoinsel(PG_FUNCTION_ARGS)
 				 * Higher accuracy would require us to add  P(lower1 = lower2) *
 				 * P(upper2 <= upper1)
 				 */
-				selec = calc_joint_hist_lt_selectivity(typcache,
+				selec = calc_join_hist_lt_selectivity(typcache,
 													   hist1_lower, nhist1, null_frac1, empty_frac1,
 													   hist2_lower, nhist2, null_frac2, empty_frac2);
 				break;
@@ -1492,7 +1492,7 @@ rangejoinsel(PG_FUNCTION_ARGS)
 				 * Higher accuracy would require us to add  P(lower1 = lower2) *
 				 * P(upper2 <= upper1)
 				 */
-				selec = calc_joint_hist_lt_selectivity(typcache,
+				selec = calc_join_hist_lt_selectivity(typcache,
 													   hist2_lower, nhist2, null_frac2, empty_frac2,
 													   hist1_lower, nhist1, null_frac1, empty_frac1);
 				break;
@@ -1505,35 +1505,35 @@ rangejoinsel(PG_FUNCTION_ARGS)
 				 * Higher accuracy would require us to add  P(lower1 = lower2) *
 				 * P(upper2 <= upper1)
 				 */
-				selec = calc_joint_hist_lt_selectivity(typcache,
+				selec = calc_join_hist_lt_selectivity(typcache,
 													   hist2_lower, nhist2, null_frac2, empty_frac2,
 													   hist1_lower, nhist1, null_frac1, empty_frac1);
 				break;
 
 			case OID_RANGE_LEFT_OP:
 				/* var1 << var2 when upper(var1) < lower(var2) */
-				selec = calc_joint_hist_lt_selectivity(typcache,
+				selec = calc_join_hist_lt_selectivity(typcache,
 													   hist1_upper, nhist1, null_frac1, empty_frac1,
 													   hist2_lower, nhist2, null_frac2, empty_frac2);
 				break;
 
 			case OID_RANGE_RIGHT_OP:
 				/* var1 >> var2 when upper(var2) < lower(var1) */
-				selec = calc_joint_hist_lt_selectivity(typcache,
+				selec = calc_join_hist_lt_selectivity(typcache,
 													   hist2_upper, nhist2, null_frac2, empty_frac2,
 													   hist1_lower, nhist1, null_frac1, empty_frac2);
 				break;
 
 			case OID_RANGE_OVERLAPS_LEFT_OP:
 				/* var1 &< var2 when upper(var1) < upper(var2) */
-				selec = calc_joint_hist_lt_selectivity(typcache,
+				selec = calc_join_hist_lt_selectivity(typcache,
 													   hist1_upper, nhist1, null_frac1, empty_frac1,
 													   hist2_upper, nhist2, null_frac2, empty_frac2);
 				break;
 
 			case OID_RANGE_OVERLAPS_RIGHT_OP:
 				/* var1 &> var2 when lower(var2) < lower(var1) */
-				selec = calc_joint_hist_lt_selectivity(typcache,
+				selec = calc_join_hist_lt_selectivity(typcache,
 													   hist2_lower, nhist2, null_frac2, empty_frac2,
 													   hist1_lower, nhist1, null_frac1, empty_frac2);
 				break;
