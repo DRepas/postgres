@@ -2842,13 +2842,49 @@ neqjoinsel(PG_FUNCTION_ARGS)
 	PG_RETURN_FLOAT8(result);
 }
 
+// TODO: Given 2 histograms, calculate selectivity
+double join_histogram_selectivity() {
+	// TODO: Use ineq_histogram_selectivity inside a loop to calculate this using sync algorithm
+	// TODO: ltop = get_opfamily_member(opfamily, op_lefttype, op_righttype, BTLessStrategyNumber);
+	return 0;
+}
+
+// TODO: Given 2 MCV arrays, calculate selectivity
+double join_mcv_selectivity() {
+	/* TODO: Implement this
+	 * For each value in MCV
+	 * 		Accumulate mcv_selectivity(var, mcv_value, op)
+	 */
+	return 0;
+}
+
+// TODO: Given 1 histogram and 1 MCV array, calculate selectivity
+double join_mcv_histogram_selectivity() {
+	/* TODO: Implement this
+	 * For each value in MCV
+	 * 		Accumulate ineq_histogram_selectivity(var, mcv_value, isgt, iseq)
+	 */
+	return 0;
+}
+
+/*
+ * Common wrapper function for the join cardinality estimators that simply
+ * invoke scalarineqjoinsel().
+ */
+static Datum
+scalarineqjoinsel_wrapper(PG_FUNCTION_ARGS, bool isgt, bool iseq)
+{
+	// TODO: Implement scalarineqjoinsel_wrapper
+	PG_RETURN_FLOAT8(DEFAULT_INEQ_SEL);
+}
+
 /*
  *		scalarltjoinsel - Join selectivity of "<" for scalars
  */
 Datum
 scalarltjoinsel(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_FLOAT8(DEFAULT_INEQ_SEL);
+	return scalarineqjoinsel_wrapper(fcinfo, false, false);
 }
 
 /*
@@ -2857,7 +2893,7 @@ scalarltjoinsel(PG_FUNCTION_ARGS)
 Datum
 scalarlejoinsel(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_FLOAT8(DEFAULT_INEQ_SEL);
+	return scalarineqjoinsel_wrapper(fcinfo, false, true);
 }
 
 /*
@@ -2866,7 +2902,7 @@ scalarlejoinsel(PG_FUNCTION_ARGS)
 Datum
 scalargtjoinsel(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_FLOAT8(DEFAULT_INEQ_SEL);
+	return scalarineqjoinsel_wrapper(fcinfo, true, false);
 }
 
 /*
@@ -2875,7 +2911,7 @@ scalargtjoinsel(PG_FUNCTION_ARGS)
 Datum
 scalargejoinsel(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_FLOAT8(DEFAULT_INEQ_SEL);
+	return scalarineqjoinsel_wrapper(fcinfo, true, true);
 }
 
 
