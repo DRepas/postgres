@@ -1237,6 +1237,25 @@ range_bound_qsort_cmp(const void *a1, const void *a2, void *arg)
 
 /*
  * calc_join_hist_lt_selectivity -- calculate join cardinality for range operators using histogram data
+ *
+ * This function estimates the fraction of values in the cross product of the two histograms where the first is less than the second. The join selectivity estimation for all range operations is expressed using this function. The general idea is to iteratively decompose (var op var) into a summation of (var op const) using the range bounds present in both histograms as const. The (var op const) is then calculated using calc_hist_selectivity_scalar, which is the function used for selectivity estimation (non-joins).
+ *
+ * Since using more statistics increases the estimation accuracy, we want to use all the values of the two histograms. Therefore, as a first step, we merge the values in both histograms into one ordered array (called sync).
+ * 
+ * In the following explanation, Var1 and Var2 are two variables whose distributions are given by hist1 and hist2, respectively.
+ * 
+ * In order to estimate:
+ * P(Var1 < Var2)
+ * 
+ * We need to compute for each bin in the sync array
+ * P(Var1 < Var2 | Var2 is in bin) * P(Var2 is in bin)
+ * 
+ * The second probability is the difference between the selectivity of the upper and lower bounds of the ith sync bin, which can be directly computed by calling calc_hist_selectivity_scalar.
+ * 
+ * The first probability, however, cannot be directly computed because we don't have a concrete value for Var2. Instead, we can under and over estimate it by respectively setting the value of Var2 to the lower and upper bound of one bin in the sync array, then compute the average.
+ * P(Var1 < lower bound of bin) <= 
+ * P(Var1 < Var2 | Var2 is in bin) <= 
+ * P(Var1 < upper bound of bin)
  */
 static double
 calc_join_hist_lt_selectivity(TypeCacheEntry *typcache,
@@ -1246,29 +1265,40 @@ calc_join_hist_lt_selectivity(TypeCacheEntry *typcache,
 							   double null_frac2, double empty_frac2)
 {
 	int			i;
-	double		selec,
+	double		selectivity_under_estimation,
+				selectivity_over_estimation,
+				selectivity,
 				lower_sel1,
 				lower_sel2,
 				upper_sel1,
 				upper_sel2;
 	RangeBound *sync;
 
-	/* There should always be at least one bin in the combined histogram */
+	/*
+	 * Histograms will never be empty. In fact, a histogram will never have less than 2 values (1 bin)
+	 */
 	Assert(nhist1 + nhist2 > 1);
 
+	/* Merge both histograms in one array */
 	sync = (RangeBound *) palloc(sizeof(RangeBound) * (nhist1 + nhist2));
 
+	// TODO: Write with memcpy
 	for (i = 0; i < nhist1; i++)
 		sync[i] = hist1[i];
 
 	for (i = 0; i < nhist2; i++)
 		sync[nhist1 + i] = hist2[i];
 
-	/* Sort sync array to make the next loop more efficient */
 	qsort_arg(sync, nhist1 + nhist2, sizeof(RangeBound),
 			  range_bound_qsort_cmp, typcache);
 
-	selec = 0;
+	/*
+	 * Do the estimation
+	 * 
+	 * Four selectivity values are estimated using calc_hist_selectivity_scalar, for the lower and upper bound of the current bin, using both hist1 and hist2.
+	 */
+	selectivity_under_estimation = 0;
+	selectivity_over_estimation = 0;
 	lower_sel1 = calc_hist_selectivity_scalar(typcache,
 											  &sync[0], hist1, nhist1, false);
 	lower_sel2 = calc_hist_selectivity_scalar(typcache,
@@ -1280,29 +1310,24 @@ calc_join_hist_lt_selectivity(TypeCacheEntry *typcache,
 		upper_sel2 = calc_hist_selectivity_scalar(typcache,
 												  &sync[i], hist2, nhist2, false);
 
-		/*
-		 * selec += P(Var1 < c | c is in ith sync bin) * P(Var2 is in ith sync
-		 * bin)
-		 *
-		 * P(Var1 < c | c is in ith sync bin) is calculated as the middle
-		 * value between the selectivity of the upper and lower bounds of the
-		 * ith sync bin
-		 *
-		 * P(Var2 is in ith sync bin) is the difference between the
-		 * selectivity of the upper and lower bounds of the ith sync bin
-		 */
-		selec += (lower_sel1 + upper_sel1) / 2 * (upper_sel2 - lower_sel2);
+		/* Do the under and over estimation */
+		selectivity_under_estimation += lower_sel1 * (upper_sel2 - lower_sel2);
+		selectivity_over_estimation += upper_sel1 * (upper_sel2 - lower_sel2);
 
+		/* Prepare for the next iteration */
 		lower_sel1 = upper_sel1;
 		lower_sel2 = upper_sel2;
 	}
 
 	pfree(sync);
 
-	/* Histograms don't include null values or empty ranges */
-	selec *= 1 - null_frac1 - null_frac2 - empty_frac1 - empty_frac2;
-	return selec;
+	/* Estimate selectivity as the middle value between the under-estimation and the over-estimation */
+	selectivity = (selectivity_under_estimation + selectivity_over_estimation) / 2;
 
+	/* Histograms don't include null values or empty ranges */
+	selectivity *= 1 - null_frac1 - null_frac2 - empty_frac1 - empty_frac2;
+
+	return selectivity;
 }
 
 /*
@@ -1432,14 +1457,16 @@ rangejoinsel(PG_FUNCTION_ARGS)
 				elog(ERROR, "bounds histogram contains an empty range");
 		}
 
+		// TODO: Check if it is under of over estimation
 		switch (operator)
 		{
 			case OID_RANGE_OVERLAP_OP:
-
 				/*
-				 * Selectivity of A && B = Selectivity of NOT( A << B || A >>
-				 * B ) = 1 - Selectivity of A.upper < B.lower - Selectivity of
-				 * B.upper < A.lower
+				 * Selectivity of A && B = 
+				 *   Selectivity of NOT( A << B || A >> B ) = 
+				 *     1 - 
+				 *     Selectivity of (A.upper < B.lower) - 
+				 *     Selectivity of (B.upper < A.lower)
 				 */
 				selec = 1;
 				selec -= calc_join_hist_lt_selectivity(typcache,
@@ -1451,16 +1478,14 @@ rangejoinsel(PG_FUNCTION_ARGS)
 				break;
 
 			case OID_RANGE_LESS_OP:
-
 				/*
 				 * A < B starts by comparing lower bounds and if they are
 				 * equal compares upper bounds
-				 */
-				/* We underestimate by comparing only the lower bounds */
-
-				/*
+				 *
+				 * We underestimate by comparing only the lower bounds
+				 *
 				 * Higher accuracy would require us to add  P(lower1 = lower2) *
-				 * P(upper2 <= upper1)
+				 * P(upper2 < upper1)
 				 */
 				selec = calc_join_hist_lt_selectivity(typcache,
 													   hist1_lower, nhist1, null_frac1, empty_frac1,
@@ -1468,28 +1493,25 @@ rangejoinsel(PG_FUNCTION_ARGS)
 				break;
 
 			case OID_RANGE_LESS_EQUAL_OP:
-
 				/*
-				 * A <= B starts by comparing lower bounds and if they are
+				 * A <= B = NOT (B < A)
+				 * Start by comparing lower bounds and if they are
 				 * equal compares upper bounds
-				 */
-				/* We overestimate by comparing only the lower bounds */
-
-				/*
-				 * Higher accuracy would require us to add  P(lower1 = lower2) *
+				 *
+				 * We underestimate by comparing only the lower bounds
+				 *
+				 * Higher accuracy would require us to add P(lower1 = lower2) *
 				 * P(upper2 <= upper1)
 				 */
-				selec = calc_join_hist_lt_selectivity(typcache,
-													   hist1_lower, nhist1, null_frac1, empty_frac1,
-													   hist2_lower, nhist2, null_frac2, empty_frac2);
-				break;
-
+				selec = 1 - calc_join_hist_lt_selectivity(typcache,
+													   hist2_lower, nhist2, null_frac2, empty_frac2,
+													   hist1_lower, nhist1, null_frac1, empty_frac1);
 			case OID_RANGE_GREATER_OP:
-				/* A > B == B < A */
-				/* We underestimate by comparing only the lower bounds */
-
-				/*
-				 * Higher accuracy would require us to add  P(lower1 = lower2) *
+				/* A > B == B < A 
+				 *
+				 * Underestimate by comparing only the lower bounds
+				 *
+				 * Higher accuracy would require us to add P(lower1 = lower2) *
 				 * P(upper2 <= upper1)
 				 */
 				selec = calc_join_hist_lt_selectivity(typcache,
@@ -1498,17 +1520,19 @@ rangejoinsel(PG_FUNCTION_ARGS)
 				break;
 
 			case OID_RANGE_GREATER_EQUAL_OP:
-				/* A >= B == B <= A */
-				/* We underestimate by comparing only the lower bounds */
-
 				/*
-				 * Higher accuracy would require us to add  P(lower1 = lower2) *
+				 * A >= B = NOT (A < B)
+				 * Start by comparing lower bounds and if they are
+				 * equal compares upper bounds
+				 *
+				 * We underestimate by comparing only the lower bounds
+				 *
+				 * Higher accuracy would require us to add P(lower1 = lower2) *
 				 * P(upper2 <= upper1)
 				 */
-				selec = calc_join_hist_lt_selectivity(typcache,
-													   hist2_lower, nhist2, null_frac2, empty_frac2,
-													   hist1_lower, nhist1, null_frac1, empty_frac1);
-				break;
+				selec = 1 - calc_join_hist_lt_selectivity(typcache,
+													   hist1_upper, nhist1, null_frac1, empty_frac1,
+													   hist2_lower, nhist2, null_frac2, empty_frac2);
 
 			case OID_RANGE_LEFT_OP:
 				/* var1 << var2 when upper(var1) < lower(var2) */
