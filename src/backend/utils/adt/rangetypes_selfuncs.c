@@ -1339,6 +1339,8 @@ calc_join_hist_lt_selectivity(TypeCacheEntry *typcache,
 
 	pfree(sync);
 
+	pfree(sync);
+
 	return selectivity;
 }
 
@@ -1469,10 +1471,10 @@ rangejoinsel(PG_FUNCTION_ARGS)
 				elog(ERROR, "bounds histogram contains an empty range");
 		}
 
-		// TODO: Check if it is under of over estimation
 		switch (operator)
 		{
 			case OID_RANGE_OVERLAP_OP:
+
 				/*
 				 * Selectivity of A && B = Selectivity of NOT( A << B || A >>
 				 * B ) = 1 - Selectivity of (A.upper < B.lower) - Selectivity
