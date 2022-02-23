@@ -1570,31 +1570,31 @@ rangejoinsel(PG_FUNCTION_ARGS)
 			case OID_RANGE_CONTAINED_OP:
 
 				/*
-				 * var1 <@ var2 is equivalent to lower(var1) < lower(var2) and
-				 * upper(var2) < upper(var1)
+				 * var1 <@ var2 is equivalent to lower(var2) <= lower(var1)
+				 * and upper(var1) <= upper(var2)
 				 *
-				 * Underestimate by calculating lower(var2) < lower(var1) and
-				 * upper(var1) < upper(var2). Assuming independence, multiply
-				 * both selectivities.
-				 *
+				 * After negating both sides we get not( lower(var1) <
+				 * lower(var2) ) and not( upper(var2) < upper(var1) ),
+				 * respectively. Assuming independence, multiply both
+				 * selectivities.
 				 */
-				selec = calc_join_hist_lt_selectivity(typcache, hist1_lower, nhist1, hist2_lower, nhist2);
-				selec *= calc_join_hist_lt_selectivity(typcache, hist2_upper, nhist2, hist1_upper, nhist1);
+				selec = 1 - calc_join_hist_lt_selectivity(typcache, hist1_lower, nhist1, hist2_lower, nhist2);
+				selec *= 1 - calc_join_hist_lt_selectivity(typcache, hist2_upper, nhist2, hist1_upper, nhist1);
 				break;
 
 			case OID_RANGE_CONTAINS_OP:
 
 				/*
-				 * var1 @> var2 is equivalent to lower(var2) <= lower(var1)
-				 * and upper(var1) <= upper(var2)
+				 * var1 @> var2 is equivalent to lower(var1) <= lower(var2)
+				 * and upper(var2) <= upper(var1)
 				 *
-				 * Underestimate by calculating lower(var2) < lower(var1) and
-				 * upper(var1) < upper(var2). Assuming independence, multiply
-				 * both selectivities.
-				 *
+				 * After negating both sides we get not( lower(var2) <
+				 * lower(var1) ) and not( upper(var1) < upper(var2) ),
+				 * respectively. Assuming independence, multiply both
+				 * selectivities.
 				 */
-				selec = calc_join_hist_lt_selectivity(typcache, hist2_lower, nhist2, hist1_lower, nhist1);
-				selec *= calc_join_hist_lt_selectivity(typcache, hist1_upper, nhist1, hist2_upper, nhist2);
+				selec = 1 - calc_join_hist_lt_selectivity(typcache, hist2_lower, nhist2, hist1_lower, nhist1);
+				selec *= 1 - calc_join_hist_lt_selectivity(typcache, hist1_upper, nhist1, hist2_upper, nhist2);
 				break;
 
 			case OID_RANGE_CONTAINS_ELEM_OP:

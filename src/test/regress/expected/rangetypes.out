@@ -1858,14 +1858,14 @@ SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 <@ ir2');
  estimated | actual 
 -----------+--------
-      5559 |   6268
+      9396 |   6268
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 @> ir2');
  estimated | actual 
 -----------+--------
-      5545 |   3973
+      6730 |   3973
 (1 row)
 
 SELECT * FROM check_estimated_rows('

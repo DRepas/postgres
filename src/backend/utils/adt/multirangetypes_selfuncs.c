@@ -1494,6 +1494,27 @@ multirangejoinsel(PG_FUNCTION_ARGS)
 
 	selec = default_multirange_selectivity(operator);
 
+	/* get multirange type cache */
+	if (
+		vardata1.vartype == INT4MULTIRANGEOID ||
+		vardata1.vartype == NUMMULTIRANGEOID ||
+		vardata1.vartype == TSMULTIRANGEOID ||
+		vardata1.vartype == TSTZMULTIRANGEOID ||
+		vardata1.vartype == DATEMULTIRANGEOID ||
+		vardata1.vartype == INT8MULTIRANGEOID
+		)
+		typcache = multirange_get_typcache(fcinfo, vardata1.vartype);
+	else if (
+			 vardata2.vartype == INT4MULTIRANGEOID ||
+			 vardata2.vartype == NUMMULTIRANGEOID ||
+			 vardata2.vartype == TSMULTIRANGEOID ||
+			 vardata2.vartype == TSTZMULTIRANGEOID ||
+			 vardata2.vartype == DATEMULTIRANGEOID ||
+			 vardata2.vartype == INT8MULTIRANGEOID
+		)
+		typcache = multirange_get_typcache(fcinfo, vardata2.vartype);
+
+
 	if (HeapTupleIsValid(vardata1.statsTuple) &&
 		get_attstatsslot(&hist1, vardata1.statsTuple,
 						 STATISTIC_KIND_BOUNDS_HISTOGRAM, InvalidOid,
@@ -1502,11 +1523,10 @@ multirangejoinsel(PG_FUNCTION_ARGS)
 		get_attstatsslot(&hist2, vardata2.statsTuple,
 						 STATISTIC_KIND_BOUNDS_HISTOGRAM, InvalidOid,
 						 ATTSTATSSLOT_VALUES) &&
-		vardata1.vartype == vardata2.vartype)
+		typcache)
 	{
 
 		/* Initialize underlying range type cache */
-		typcache = multirange_get_typcache(fcinfo, vardata1.vartype);
 		rng_typcache = typcache->rngtype;
 
 		/*
@@ -1698,16 +1718,16 @@ multirangejoinsel(PG_FUNCTION_ARGS)
 			case OID_RANGE_MULTIRANGE_CONTAINED_OP:
 
 				/*
-				 * var1 <@ var2 is equivalent to lower(var1) < lower(var2) and
-				 * upper(var2) < upper(var1)
+				 * var1 <@ var2 is equivalent to lower(var2) <= lower(var1)
+				 * and upper(var1) <= upper(var2)
 				 *
-				 * Underestimate by calculating lower(var2) < lower(var1) and
-				 * upper(var1) < upper(var2). Assuming independence, multiply
-				 * both selectivities.
-				 *
+				 * After negating both sides we get not( lower(var1) <
+				 * lower(var2) ) and not( upper(var2) < upper(var1) ),
+				 * respectively. Assuming independence, multiply both
+				 * selectivities.
 				 */
-				selec = calc_join_hist_lt_selectivity(rng_typcache, hist1_lower, nhist1, hist2_lower, nhist2);
-				selec *= calc_join_hist_lt_selectivity(rng_typcache, hist2_upper, nhist2, hist1_upper, nhist1);
+				selec = 1 - calc_join_hist_lt_selectivity(rng_typcache, hist1_lower, nhist1, hist2_lower, nhist2);
+				selec *= 1 - calc_join_hist_lt_selectivity(rng_typcache, hist2_upper, nhist2, hist1_upper, nhist1);
 				break;
 
 			case OID_MULTIRANGE_CONTAINS_MULTIRANGE_OP:
@@ -1715,16 +1735,16 @@ multirangejoinsel(PG_FUNCTION_ARGS)
 			case OID_RANGE_CONTAINS_MULTIRANGE_OP:
 
 				/*
-				 * var1 @> var2 is equivalent to lower(var2) <= lower(var1)
-				 * and upper(var1) <= upper(var2)
+				 * var1 @> var2 is equivalent to lower(var1) <= lower(var2)
+				 * and upper(var2) <= upper(var1)
 				 *
-				 * Underestimate by calculating lower(var2) < lower(var1) and
-				 * upper(var1) < upper(var2). Assuming independence, multiply
-				 * both selectivities.
-				 *
+				 * After negating both sides we get not( lower(var2) <
+				 * lower(var1) ) and not( upper(var1) < upper(var2) ),
+				 * respectively. Assuming independence, multiply both
+				 * selectivities.
 				 */
-				selec = calc_join_hist_lt_selectivity(rng_typcache, hist2_lower, nhist2, hist1_lower, nhist1);
-				selec *= calc_join_hist_lt_selectivity(rng_typcache, hist1_upper, nhist1, hist2_upper, nhist2);
+				selec = 1 - calc_join_hist_lt_selectivity(rng_typcache, hist2_lower, nhist2, hist1_lower, nhist1);
+				selec *= 1 - calc_join_hist_lt_selectivity(rng_typcache, hist1_upper, nhist1, hist2_upper, nhist2);
 				break;
 
 			case OID_MULTIRANGE_ADJACENT_MULTIRANGE_OP:
