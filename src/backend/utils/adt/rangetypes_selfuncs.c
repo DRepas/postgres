@@ -1608,8 +1608,73 @@ rangejoinsel(PG_FUNCTION_ARGS)
 				break;
 		}
 
+		/*
+		 * An empty range matches all ranges, all empty ranges, or nothing,
+		 * depending on the operator
+		 */
+		switch (operator)
+		{
+				/* these return false if either argument is empty */
+			case OID_RANGE_OVERLAP_OP:
+			case OID_RANGE_OVERLAPS_LEFT_OP:
+			case OID_RANGE_OVERLAPS_RIGHT_OP:
+			case OID_RANGE_LEFT_OP:
+			case OID_RANGE_RIGHT_OP:
+				selec = (1 - empty_frac1) * (1 - empty_frac2) * selec;
+				break;
+
+				/* 
+				 * nothing is < an empty range 
+				 * an empty range is < all non-empty ranges
+				 */
+			case OID_RANGE_LESS_OP:
+				selec = (1 - empty_frac1) * (1 - empty_frac2) * selec + empty_frac1 * (1 - empty_frac2);
+				break;
+				/* 
+				 * an empty range is > nothing
+				 * all non-empty ranges are > an empty range
+				 */
+			case OID_RANGE_GREATER_OP:
+				selec = (1 - empty_frac1) * (1 - empty_frac2) * selec + (1 - empty_frac1) * empty_frac2;
+				break;
+
+				/* 
+				 * an empty range is contained by all non-empty ranges
+				 * only empty ranges can be contained by an empty range
+				 */
+			case OID_RANGE_CONTAINED_OP:
+				/* 
+				 * an empty range is <= all ranges
+				 * only empty ranges are <= an empty range 
+				 */
+			case OID_RANGE_LESS_EQUAL_OP:
+				selec = (1 - empty_frac1) * (1 - empty_frac2) * selec + empty_frac1 * 1;
+				break;
+
+				/* 
+				 * all ranges contains an empty range
+				 * an empty range contains only empty range
+				 */
+			case OID_RANGE_CONTAINS_OP:
+				/* 
+				 * all ranges >= an empty range
+				 * an empty range >= only empty range
+				 */
+			case OID_RANGE_GREATER_EQUAL_OP:
+				selec = (1 - empty_frac1) * (1 - empty_frac2) * selec + 1 * empty_frac2;
+				break;
+				
+			case OID_RANGE_CONTAINS_ELEM_OP:
+			case OID_RANGE_ELEM_CONTAINED_OP:
+				/* just punt for now, after implementing the selectivity estimation */
+
+			default:
+				break;
+
+		}
+
 		/* all range operators are strict */
-		selec *= (1 - null_frac1 - empty_frac1) * (1 - null_frac2 - empty_frac2);
+		selec *= (1 - null_frac1) * (1 - null_frac2);
 
 		free_attstatsslot(&hist1);
 		free_attstatsslot(&hist2);
