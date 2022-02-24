@@ -1495,25 +1495,10 @@ multirangejoinsel(PG_FUNCTION_ARGS)
 	selec = default_multirange_selectivity(operator);
 
 	/* get multirange type cache */
-	if (
-		vardata1.vartype == INT4MULTIRANGEOID ||
-		vardata1.vartype == NUMMULTIRANGEOID ||
-		vardata1.vartype == TSMULTIRANGEOID ||
-		vardata1.vartype == TSTZMULTIRANGEOID ||
-		vardata1.vartype == DATEMULTIRANGEOID ||
-		vardata1.vartype == INT8MULTIRANGEOID
-		)
+	if (type_is_multirange(vardata1.vartype))
 		typcache = multirange_get_typcache(fcinfo, vardata1.vartype);
-	else if (
-			 vardata2.vartype == INT4MULTIRANGEOID ||
-			 vardata2.vartype == NUMMULTIRANGEOID ||
-			 vardata2.vartype == TSMULTIRANGEOID ||
-			 vardata2.vartype == TSTZMULTIRANGEOID ||
-			 vardata2.vartype == DATEMULTIRANGEOID ||
-			 vardata2.vartype == INT8MULTIRANGEOID
-		)
+	else if (type_is_multirange(vardata2.vartype))
 		typcache = multirange_get_typcache(fcinfo, vardata2.vartype);
-
 
 	if (HeapTupleIsValid(vardata1.statsTuple) &&
 		get_attstatsslot(&hist1, vardata1.statsTuple,
