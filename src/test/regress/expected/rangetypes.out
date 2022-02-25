@@ -1823,84 +1823,84 @@ SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 < ir2');
  estimated | actual 
 -----------+--------
-      8416 |   9745
+      9886 |   9745
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 <= ir2');
  estimated | actual 
 -----------+--------
-      8416 |   9935
+      9986 |   9935
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 > ir2');
  estimated | actual 
 -----------+--------
-     27682 |  30565
+     30514 |  30565
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 >= ir2');
  estimated | actual 
 -----------+--------
-     27682 |  30755
+     30614 |  30755
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 && ir2');
  estimated | actual 
 -----------+--------
-      9861 |   9720
+      9944 |   9720
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 <@ ir2');
  estimated | actual 
 -----------+--------
-      9396 |   6268
+     10975 |   6268
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 @> ir2');
  estimated | actual 
 -----------+--------
-      6730 |   3973
+      9486 |   3973
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 << ir2');
  estimated | actual 
 -----------+--------
-      4992 |   5050
+      5034 |   5050
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 >> ir2');
  estimated | actual 
 -----------+--------
-     21244 |  21630
+     21422 |  21630
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 &< ir2');
  estimated | actual 
 -----------+--------
-      7231 |  12023
+      7291 |  12023
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 &> ir2');
  estimated | actual 
 -----------+--------
-     27682 |  28105
+     27914 |  28105
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 -|- ir2');
  estimated | actual 
 -----------+--------
-       361 |    233
+       364 |    233
 (1 row)
 
 SELECT * FROM check_estimated_rows('

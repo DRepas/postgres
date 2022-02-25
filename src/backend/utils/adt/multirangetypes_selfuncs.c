@@ -1751,8 +1751,94 @@ multirangejoinsel(PG_FUNCTION_ARGS)
 				break;
 		}
 
+
+		/* the calculated selectivity only applies to non-empty (multi)ranges */
+		selec *= (1 - empty_frac1) * (1 - empty_frac2);
+
+		/*
+		 * Depending on the operator, empty (multi)ranges might match
+		 * different fractions of the result.
+		 */
+		switch (operator)
+		{
+			case OID_MULTIRANGE_LESS_OP:
+
+				/*
+				 * empty (multi)range < non-empty (multi)range
+				 */
+				selec += empty_frac1 * (1 - empty_frac2);
+				break;
+
+			case OID_MULTIRANGE_GREATER_OP:
+
+				/*
+				 * non-empty (multi)range > empty (multi)range
+				 */
+				selec += (1 - empty_frac1) * empty_frac2;
+				break;
+
+			case OID_MULTIRANGE_MULTIRANGE_CONTAINED_OP:
+			case OID_MULTIRANGE_RANGE_CONTAINED_OP:
+			case OID_RANGE_MULTIRANGE_CONTAINED_OP:
+
+				/*
+				 * empty (multi)range <@ any (multi)range
+				 */
+			case OID_MULTIRANGE_LESS_EQUAL_OP:
+
+				/*
+				 * empty (multi)range <= any (multi)range
+				 */
+				selec += empty_frac1;
+				break;
+
+			case OID_MULTIRANGE_CONTAINS_MULTIRANGE_OP:
+			case OID_MULTIRANGE_CONTAINS_RANGE_OP:
+			case OID_RANGE_CONTAINS_MULTIRANGE_OP:
+
+				/*
+				 * any (multi)range @> empty (multi)range
+				 */
+			case OID_MULTIRANGE_GREATER_EQUAL_OP:
+
+				/*
+				 * any (multi)range >= empty (multi)range
+				 */
+				selec += empty_frac2;
+				break;
+
+			case OID_MULTIRANGE_CONTAINS_ELEM_OP:
+			case OID_MULTIRANGE_ELEM_CONTAINED_OP:
+			case OID_MULTIRANGE_OVERLAPS_MULTIRANGE_OP:
+			case OID_MULTIRANGE_OVERLAPS_RANGE_OP:
+			case OID_RANGE_OVERLAPS_MULTIRANGE_OP:
+			case OID_MULTIRANGE_OVERLAPS_LEFT_MULTIRANGE_OP:
+			case OID_MULTIRANGE_OVERLAPS_LEFT_RANGE_OP:
+			case OID_RANGE_OVERLAPS_LEFT_MULTIRANGE_OP:
+			case OID_MULTIRANGE_OVERLAPS_RIGHT_MULTIRANGE_OP:
+			case OID_MULTIRANGE_OVERLAPS_RIGHT_RANGE_OP:
+			case OID_RANGE_OVERLAPS_RIGHT_MULTIRANGE_OP:
+			case OID_MULTIRANGE_LEFT_MULTIRANGE_OP:
+			case OID_MULTIRANGE_LEFT_RANGE_OP:
+			case OID_RANGE_LEFT_MULTIRANGE_OP:
+			case OID_MULTIRANGE_RIGHT_MULTIRANGE_OP:
+			case OID_MULTIRANGE_RIGHT_RANGE_OP:
+			case OID_RANGE_RIGHT_MULTIRANGE_OP:
+			case OID_MULTIRANGE_ADJACENT_MULTIRANGE_OP:
+			case OID_MULTIRANGE_ADJACENT_RANGE_OP:
+			case OID_RANGE_ADJACENT_MULTIRANGE_OP:
+			default:
+
+				/*
+				 * these operators always return false when an empty
+				 * (multi)range is involved
+				 */
+				break;
+
+		}
+
 		/* all range operators are strict */
-		selec *= (1 - null_frac1 - empty_frac1) * (1 - null_frac2 - empty_frac2);
+		selec *= (1 - null_frac1) * (1 - null_frac2);
 
 		free_attstatsslot(&hist1);
 		free_attstatsslot(&hist2);
