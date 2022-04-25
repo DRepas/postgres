@@ -3398,14 +3398,14 @@ SELECT * FROM check_estimated_rows('
 select * from test_multirange_join_1, test_multirange_join_2 where mr1 <= mr2');
  estimated | actual 
 -----------+--------
-      4829 |   4898
+      7309 |   4898
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_multirange_join_1, test_multirange_join_2 where mr1 > mr2');
  estimated | actual 
 -----------+--------
-     15521 |  15452
+     13041 |  15452
 (1 row)
 
 SELECT * FROM check_estimated_rows('
@@ -3419,63 +3419,63 @@ SELECT * FROM check_estimated_rows('
 select * from test_multirange_join_1, test_multirange_join_2 where mr1 && mr2');
  estimated | actual 
 -----------+--------
-     11097 |  10932
+     10947 |  10932
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_multirange_join_1, test_range_join where mr1 && ir');
  estimated | actual 
 -----------+--------
-      9593 |   9471
+      9466 |   9471
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join, test_multirange_join_2 where ir && mr2');
  estimated | actual 
 -----------+--------
-      2918 |   2851
+      2447 |   2851
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_multirange_join_1, test_multirange_join_2 where mr1 <@ mr2');
  estimated | actual 
 -----------+--------
-      8491 |   7393
+      6682 |   7393
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_multirange_join_1, test_range_join where mr1 <@ ir');
  estimated | actual 
 -----------+--------
-      9754 |   8621
+      7389 |   8621
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join, test_multirange_join_2 where ir <@ mr2');
  estimated | actual 
 -----------+--------
-      2660 |   1987
+      1790 |   1987
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_multirange_join_1, test_multirange_join_2 where mr1 @> mr2');
  estimated | actual 
 -----------+--------
-      3487 |   2361
+      1762 |   2361
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_multirange_join_1, test_range_join where mr1 @> ir');
  estimated | actual 
 -----------+--------
-      9769 |   8397
+      7982 |   8397
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join, test_multirange_join_2 where ir @> mr2');
  estimated | actual 
 -----------+--------
-      1177 |    800
+       303 |    800
 (1 row)
 
 SELECT * FROM check_estimated_rows('
@@ -3496,21 +3496,21 @@ SELECT * FROM check_estimated_rows('
 select * from test_range_join, test_multirange_join_2 where ir << mr2');
  estimated | actual 
 -----------+--------
-       485 |    519
+       478 |    519
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_multirange_join_1, test_multirange_join_2 where mr1 >> mr2');
  estimated | actual 
 -----------+--------
-      4751 |   4837
+      4750 |   4837
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_multirange_join_1, test_range_join where mr1 >> ir');
  estimated | actual 
 -----------+--------
-     12662 |  12739
+     12644 |  12739
 (1 row)
 
 SELECT * FROM check_estimated_rows('
@@ -3524,14 +3524,14 @@ SELECT * FROM check_estimated_rows('
 select * from test_multirange_join_1, test_multirange_join_2 where mr1 &< mr2');
  estimated | actual 
 -----------+--------
-      3398 |   6318
+      4868 |   6318
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_multirange_join_1, test_range_join where mr1 &< ir');
  estimated | actual 
 -----------+--------
-      2660 |   5556
+      4120 |   5556
 (1 row)
 
 SELECT * FROM check_estimated_rows('
@@ -3545,14 +3545,14 @@ SELECT * FROM check_estimated_rows('
 select * from test_multirange_join_1, test_multirange_join_2 where mr1 &> mr2');
  estimated | actual 
 -----------+--------
-     13921 |  13976
+     11441 |  13976
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_multirange_join_1, test_range_join where mr1 &> ir');
  estimated | actual 
 -----------+--------
-     19712 |  19807
+     16184 |  19807
 (1 row)
 
 SELECT * FROM check_estimated_rows('
