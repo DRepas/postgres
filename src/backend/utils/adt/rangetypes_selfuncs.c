@@ -1227,19 +1227,17 @@ calc_hist_selectivity_contains(TypeCacheEntry *typcache,
  */
 static double
 calc_hist_join_selectivity(TypeCacheEntry *typcache,
-							  const RangeBound *hist1, int nhist1,
-							  const RangeBound *hist2, int nhist2)
+						   const RangeBound *hist1, int nhist1,
+						   const RangeBound *hist2, int nhist2)
 {
 	int			i,
 				j;
-	double		selectivity_under_estimation,
-				selectivity_over_estimation,
-				selectivity,
-				lower_sel1,
-				lower_sel2,
-				upper_sel1,
-				upper_sel2;
-	RangeBound	cur;
+	double		selectivity,
+				cur_sel1,
+				cur_sel2,
+				prev_sel1,
+				prev_sel2;
+	RangeBound	cur_sync;
 
 	/*
 	 * Histograms will never be empty. In fact, a histogram will never have
@@ -1248,74 +1246,56 @@ calc_hist_join_selectivity(TypeCacheEntry *typcache,
 	Assert(nhist1 > 1);
 	Assert(nhist2 > 1);
 
-	// Fast-forwards i and j to start of iteration
-	for(i = 0; range_cmp_bound_values(typcache, &hist1[i], &hist2[0]) < 0; i++);
-	for(j = 0; range_cmp_bound_values(typcache, &hist2[j], &hist1[0]) < 0; j++);
+	/* Fast-forwards i and j to start of iteration */
+	for (i = 0; range_cmp_bound_values(typcache, &hist1[i], &hist2[0]) < 0; i++);
+	for (j = 0; range_cmp_bound_values(typcache, &hist2[j], &hist1[0]) < 0; j++);
 
 	/*
 	 * Do the estimation
-	 *
-	 * Four selectivity values are estimated using
-	 * calc_hist_selectivity_scalar, for the lower and upper bound of the
-	 * current bin, using both hist1 and hist2.
 	 */
-	selectivity_under_estimation = 0;
-	selectivity_over_estimation = 0;
-	if(range_cmp_bound_values(typcache, &hist1[i], &hist2[j]) < 0)
-		cur = hist1[i++];
+	if (range_cmp_bound_values(typcache, &hist1[i], &hist2[j]) < 0)
+		cur_sync = hist1[i++];
 	else if (range_cmp_bound_values(typcache, &hist1[i], &hist2[j]) > 0)
-		cur = hist2[j++];
-	else {
-		// If equal, skip one
-		cur = hist1[i];
+		cur_sync = hist2[j++];
+	else
+	{
+		/* If equal, skip one */
+		cur_sync = hist1[i];
 		i++;
 		j++;
 	}
-	lower_sel1 = calc_hist_selectivity_scalar(typcache,
-											  &cur, hist1, nhist1, false);
-	lower_sel2 = calc_hist_selectivity_scalar(typcache,
-											  &cur, hist2, nhist2, false);
-	// Iterate overlapping region
-	while(i < nhist1 && j < nhist2)
+	prev_sel1 = calc_hist_selectivity_scalar(typcache, &cur_sync, hist1, nhist1, false);
+	prev_sel2 = calc_hist_selectivity_scalar(typcache, &cur_sync, hist2, nhist2, false);
+	/* Iterate overlapping region */
+	while (i < nhist1 && j < nhist2)
 	{
-		if(range_cmp_bound_values(typcache, &hist1[i], &hist2[j]) < 0)
-			cur = hist1[i++];
+		if (range_cmp_bound_values(typcache, &hist1[i], &hist2[j]) < 0)
+			cur_sync = hist1[i++];
 		else if (range_cmp_bound_values(typcache, &hist1[i], &hist2[j]) > 0)
-			cur = hist2[j++];
-		else {
-			// If equal, skip one
-			cur = hist1[i];
+			cur_sync = hist2[j++];
+		else
+		{
+			/* If equal, skip one */
+			cur_sync = hist1[i];
 			i++;
 			j++;
 		}
-		upper_sel1 = calc_hist_selectivity_scalar(typcache,
-												  &cur, hist1, nhist1, false);
-		upper_sel2 = calc_hist_selectivity_scalar(typcache,
-												  &cur, hist2, nhist2, false);
+		cur_sel1 = calc_hist_selectivity_scalar(typcache, &cur_sync, hist1, nhist1, false);
+		cur_sel2 = calc_hist_selectivity_scalar(typcache, &cur_sync, hist2, nhist2, false);
 
 		/* Do the under and over estimation */
-		selectivity_under_estimation += lower_sel1 * (upper_sel2 - lower_sel2);
-		selectivity_over_estimation += upper_sel1 * (upper_sel2 - lower_sel2);
+		selectivity += (prev_sel1 + cur_sel1) * (cur_sel2 - prev_sel2);
 
 		/* Prepare for the next iteration */
-		lower_sel1 = upper_sel1;
-		lower_sel2 = upper_sel2;
+		prev_sel1 = cur_sel1;
+		prev_sel2 = cur_sel2;
 	}
 
-	// Include remainder of hist2
-	if(j < nhist2)
-	{
-		selectivity_under_estimation += 1 - upper_sel2;
-		selectivity_over_estimation += 1 - upper_sel2;
-	}
+	/* Include remainder of hist2 */
+	if (j < nhist2)
+		selectivity += 1 - cur_sel2;
 
-	/*
-	 * Estimate selectivity as the middle value between the under-estimation
-	 * and the over-estimation
-	 */
-	selectivity = (selectivity_under_estimation + selectivity_over_estimation) / 2;
-
-	return selectivity;
+	return selectivity / 2;
 }
 
 /*
