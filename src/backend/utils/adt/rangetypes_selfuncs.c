@@ -1233,8 +1233,8 @@ calc_hist_selectivity_contains(TypeCacheEntry *typcache,
  * where F_X(y) denote the Cumulative Distribution Function of X at y. Note that F_X is the selectivity estimation (non-join), which is implemented using the function calc_hist_selectivity_scalar.
  *
  * Now given the histograms of the two attributes X, Y, we note the following:
- * - The PDF of Y is a step function (constant piece-wise, where each piece is defined in a bin of Y’s histogram)
- * - The CDF of X is linear piece-wise (each piece is defined in a bin of X’s histogram)
+ * - The PDF of Y is a step function (constant piece-wise, where each piece is defined in a bin of Y's histogram)
+ * - The CDF of X is linear piece-wise (each piece is defined in a bin of X's histogram)
  * This leads to the conclusion that their product (used to calculate the equation above) is also linear piece-wise. A new piece starts whenever either the bin of X or the bin of Y changes. By parallel scanning the two rangebound histograms of X and Y, we evaluate one piece of the result between every two consecutive rangebounds in the union of the two histograms.
  *
  * Given that the product F_X * f_y is linear in the interval between every two consecutive rangebounds, let them be denoted prev, cur, it can be shown that the above formula can be discretized into the following:
