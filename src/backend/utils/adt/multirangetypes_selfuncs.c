@@ -1337,7 +1337,26 @@ calc_hist_selectivity_contains(TypeCacheEntry *typcache,
 }
 
 /*
- * calc_hist_join_selectivity
+ * calc_hist_join_selectivity -- this is a utility function used to estimate the join selectivity of range attributes using rangebound histogram statistics
+ *
+ * The attributes being joined will be treated as random variables that follow a distribution modeled by a Probability Density Function (PDF). Let the two attributes be denoted X, Y. This function finds the probability P(X < Y). Note that the PDFs of the two variables can easily be obtained from their bounds histogram, respectively hist1 and hist2 .
+ *
+ * Let the PDF of X, Y be denoted as f_X, f_Y. The probability P(X < Y) can be formalized as follows:
+ * P(X < Y)= integral_-inf^inf( integral_-inf^y ( f_X(x) * f_Y(y) dx dy ) )
+ *                = integral_-inf^inf( F_X(y) * f_Y(y) dy )
+ * where F_X(y) denote the Cumulative Distribution Function of X at y. Note that F_X is the selectivity estimation (non-join), which is implemented using the function calc_hist_selectivity_scalar.
+ *
+ * Now given the histograms of the two attributes X, Y, we note the following:
+ * - The PDF of Y is a step function (constant piece-wise, where each piece is defined in a bin of Y’s histogram)
+ * - The CDF of X is linear piece-wise (each piece is defined in a bin of X’s histogram)
+ * This leads to the conclusion that their product (used to calculate the equation above) is also linear piece-wise. A new piece starts whenever either the bin of X or the bin of Y changes. By parallel scanning the two rangebound histograms of X and Y, we evaluate one piece of the result between every two consecutive rangebounds in the union of the two histograms.
+ *
+ * Given that the product F_X * f_y is linear in the interval between every two consecutive rangebounds, let them be denoted prev, cur, it can be shown that the above formula can be discretized into the following:
+ * P(X < Y)= 0.5 * sum_0^{n+m-1} ( ( F_X(prev) + F_X(cur) ) * ( F_Y(cur) - F_Y(prev) ) )
+ * where n, m are the lengths of the two histograms.
+ *
+ * As such, it is possible to fully compute the join selectivity as a summation of CDFs, iterating over the bounds of the two histograms. This maximizes the code reuse, since the CDF is computed using the calc_hist_selectivity_scalar function, which is the function used for selectivity estimation (non-joins).
+ *
  */
 static double
 calc_hist_join_selectivity(TypeCacheEntry *typcache,
@@ -1364,9 +1383,6 @@ calc_hist_join_selectivity(TypeCacheEntry *typcache,
 	for (i = 0; range_cmp_bound_values(typcache, &hist1[i], &hist2[0]) < 0; i++);
 	for (j = 0; range_cmp_bound_values(typcache, &hist2[j], &hist1[0]) < 0; j++);
 
-	/*
-	 * Do the estimation
-	 */
 	if (range_cmp_bound_values(typcache, &hist1[i], &hist2[j]) < 0)
 		cur_sync = hist1[i++];
 	else if (range_cmp_bound_values(typcache, &hist1[i], &hist2[j]) > 0)
@@ -1380,7 +1396,10 @@ calc_hist_join_selectivity(TypeCacheEntry *typcache,
 	}
 	prev_sel1 = calc_hist_selectivity_scalar(typcache, &cur_sync, hist1, nhist1, false);
 	prev_sel2 = calc_hist_selectivity_scalar(typcache, &cur_sync, hist2, nhist2, false);
-	/* Iterate overlapping region */
+
+	/*
+	 * Do the estimation on overlapping region
+	 */
 	while (i < nhist1 && j < nhist2)
 	{
 		if (range_cmp_bound_values(typcache, &hist1[i], &hist2[j]) < 0)
@@ -1397,7 +1416,6 @@ calc_hist_join_selectivity(TypeCacheEntry *typcache,
 		cur_sel1 = calc_hist_selectivity_scalar(typcache, &cur_sync, hist1, nhist1, false);
 		cur_sel2 = calc_hist_selectivity_scalar(typcache, &cur_sync, hist2, nhist2, false);
 
-		/* Do the under and over estimation */
 		selectivity += (prev_sel1 + cur_sel1) * (cur_sel2 - prev_sel2);
 
 		/* Prepare for the next iteration */
@@ -1405,7 +1423,7 @@ calc_hist_join_selectivity(TypeCacheEntry *typcache,
 		prev_sel2 = cur_sel2;
 	}
 
-	/* Include remainder of hist2 */
+	/* Include remainder of hist2 if any */
 	if (j < nhist2)
 		selectivity += 1 - cur_sel2;
 
