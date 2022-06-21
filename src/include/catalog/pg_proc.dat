@@ -11894,5 +11894,4 @@
   proname => 'multirangejoinsel', provolatile => 's', prorettype => 'float8',
   proargtypes => 'internal oid internal int2 internal',
   prosrc => 'multirangejoinsel' },
-  
 ]
