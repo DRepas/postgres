@@ -1424,6 +1424,7 @@ calc_hist_join_selectivity(TypeCacheEntry *typcache,
 	/*
 	 * Do the estimation on overlapping region
 	 */
+	selectivity = 0.0;
 	while (i < nhist1 && j < nhist2)
 	{
 		if (range_cmp_bound_values(typcache, &hist1[i], &hist2[j]) < 0)
@@ -1451,7 +1452,7 @@ calc_hist_join_selectivity(TypeCacheEntry *typcache,
 
 	/* Include remainder of hist2 if any */
 	if (j < nhist2)
-		selectivity += 1 - cur_sel2;
+		selectivity += 1 - prev_sel2;
 
 	return selectivity / 2;
 }
