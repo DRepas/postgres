@@ -1338,7 +1338,12 @@ calc_hist_selectivity_contains(TypeCacheEntry *typcache,
 
 /*
  * This is a utility function used to estimate the join selectivity of
- * range attributes using rangebound histogram statistics
+ * range attributes using rangebound histogram statistics as described
+ * in this paper:
+ *
+ * Diogo Repas, Zhicheng Luo, Maxime Schoemans and Mahmoud Sakr, 2022
+ * Selectivity Estimation of Inequality Joins In Databases
+ * https://doi.org/10.48550/arXiv.2206.07396
  *
  * The attributes being joined will be treated as random variables
  * that follow a distribution modeled by a Probability Density Function (PDF).
