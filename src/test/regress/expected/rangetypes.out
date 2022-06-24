@@ -1851,21 +1851,21 @@ SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 && ir2');
  estimated | actual 
 -----------+--------
-      4933 |   9720
+      9966 |   9720
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 <@ ir2');
  estimated | actual 
 -----------+--------
-      6954 |   6268
+     11868 |   6268
 (1 row)
 
 SELECT * FROM check_estimated_rows('
 select * from test_range_join_1, test_range_join_2 where ir1 @> ir2');
  estimated | actual 
 -----------+--------
-      2425 |   3973
+      8933 |   3973
 (1 row)
 
 SELECT * FROM check_estimated_rows('
