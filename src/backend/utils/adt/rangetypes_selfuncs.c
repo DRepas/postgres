@@ -1261,7 +1261,8 @@ calc_hist_selectivity_contains(TypeCacheEntry *typcache,
  * Given that the product F_X * f_y is linear in the interval
  * between every two consecutive rangebounds, let them be denoted prev, cur,
  * it can be shown that the above formula can be discretized into the following:
- * P(X < Y)= 0.5 * sum_0^{n+m-1} ( ( F_X(prev) + F_X(cur) ) * ( F_Y(cur) - F_Y(prev) ) )
+ * P(X < Y) = 
+ *   0.5 * sum_0^{n+m-1} ( ( F_X(prev) + F_X(cur) ) * ( F_Y(cur) - F_Y(prev) ) )
  * where n, m are the lengths of the two histograms.
  *
  * As such, it is possible to fully compute the join selectivity
