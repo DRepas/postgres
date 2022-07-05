@@ -2843,10 +2843,145 @@ neqjoinsel(PG_FUNCTION_ARGS)
 }
 
 // TODO: Given 2 histograms, calculate selectivity
-double join_histogram_selectivity() {
-	// TODO: Use ineq_histogram_selectivity inside a loop to calculate this using sync algorithm
-	// TODO: ltop = get_opfamily_member(opfamily, op_lefttype, op_righttype, BTLessStrategyNumber);
-	return 0;
+double join_histogram_selectivity(PlannerInfo *root,
+						   VariableStatData *vardata1,
+						   VariableStatData *vardata2,
+						   bool isgt, bool iseq,
+						   Oid collation
+						   ) {
+	Datum *hist1;
+	int nhist1;
+
+	Datum *hist2;
+	int nhist2;
+
+	Oid ltop, gtop;
+	Oid opfamily;
+	FmgrInfo ltopproc, gtopproc;
+
+	int			i,
+				j;
+
+	double		selectivity,
+				cur_sel1,
+				cur_sel2,
+				prev_sel1,
+				prev_sel2;
+
+	Datum	cur_sync;
+	Oid		cur_type;
+
+	// Get "less than" comparison operator
+	opclass = GetDefaultOpClass(type_id, BTREE_AM_OID);
+	if (OidIsValid(opclass))
+	{
+		opfamily = get_opclass_family(opclass);
+	} else {
+		// TODO: What to do in case of error?
+		opfamily = InvalidOid;
+	}
+	ltop = get_opfamily_member(opfamily, vardata1->vartype, vardata2->vartype, BTLessStrategyNumber);
+	gtop = get_opfamily_member(opfamily, vardata1->vartype, vardata2->vartype, BTGreaterStrategyNumber);
+	fmgr_info(get_opcode(ltop), &ltopproc);
+	fmgr_info(get_opcode(gtop), &gtopproc);
+
+	/* TODO: Get histograms for both variables (hist1, nhist1, hist2, nhist2)
+	double		hist_selec;
+	AttStatsSlot sslot1;
+	AttStatsSlot sslot2;
+
+	hist_selec = -1.0;
+
+	if (HeapTupleIsValid(vardata->statsTuple) &&
+		statistic_proc_security_check(vardata, opproc->fn_oid) &&
+		get_attstatsslot(&sslot, vardata->statsTuple,
+						 STATISTIC_KIND_HISTOGRAM, InvalidOid,
+						 ATTSTATSSLOT_VALUES))
+	{
+		*hist_size = sslot.nvalues;
+	}
+	*/
+
+	/*
+	 * Histograms will never be empty. In fact, a histogram will never have
+	 * less than 2 values (1 bin)
+	 */
+	Assert(nhist1 > 1);
+	Assert(nhist2 > 1);
+
+	/* Fast-forwards i and j to start of iteration */
+
+	for (i = 0; DatumGetBool(FunctionCall2Coll(ltop, collation, &hist1[i], &hist2[0])); i++);
+	for (j = 0; DatumGetBool(FunctionCall2Coll(ltop, collation, &hist2[j], &hist1[0])); j++);
+
+	if (DatumGetBool(FunctionCall2Coll(ltop, collation, &hist1[i], &hist2[j]))) {
+		cur_sync = hist1[i++];
+		cur_type = vardata1->vartype;
+	} else if (DatumGetBool(FunctionCall2Coll(ltop, collation, &hist2[j], &hist1[i]))) {
+		cur_sync = hist2[j++];
+		cur_type = vardata2->vartype;
+	} else {
+		/* If equal, skip one */
+		cur_sync = hist1[i];
+		cur_type = vardata1->vartype;
+		i++;
+		j++;
+	}
+
+	prev_sel1 = ineq_histogram_selectivity(root, vardata1,
+			ltop, &opproc, 
+			isgt, iseq,
+			collation,
+			cur_sync, cur_type);
+	prev_sel2 = ineq_histogram_selectivity(root, vardata2,
+			ltop, &opproc, 
+			isgt, iseq,
+			collation,
+			cur_sync, cur_type);
+
+	/*
+	 * Do the estimation on overlapping region
+	 */
+	selectivity = 0.0;
+	while (i < nhist1 && j < nhist2)
+	{
+		if (DatumGetBool(FunctionCall2Coll(ltop, collation, &hist1[i], &hist2[j]))) {
+			cur_sync = hist1[i++];
+			cur_type = vardata1->vartype;
+		} else if (DatumGetBool(FunctionCall2Coll(ltop, collation, &hist2[j], &hist1[i]))) {
+			cur_sync = hist2[j++];
+			cur_type = vardata2->vartype;
+		} else {
+			/* If equal, skip one */
+			cur_sync = hist1[i];
+			cur_type = vardata1->vartype;
+			i++;
+			j++;
+		}
+		
+		cur_sel1 = ineq_histogram_selectivity(root, vardata1,
+				ltop, &opproc, 
+				isgt, iseq,
+				collation,
+				cur_sync, cur_type);
+		cur_sel2 = ineq_histogram_selectivity(root, vardata2,
+				ltop, &opproc, 
+				isgt, iseq,
+				collation,
+				cur_sync, cur_type);
+
+		selectivity += (prev_sel1 + cur_sel1) * (cur_sel2 - prev_sel2);
+
+		/* Prepare for the next iteration */
+		prev_sel1 = cur_sel1;
+		prev_sel2 = cur_sel2;
+	}
+
+	/* Include remainder of hist2 if any */
+	if (j < nhist2)
+		selectivity += 1 - prev_sel2;
+
+	return selectivity / 2;
 }
 
 // TODO: Given 2 MCV arrays, calculate selectivity
@@ -2855,6 +2990,11 @@ double join_mcv_selectivity() {
 	 * For each value in MCV
 	 * 		Accumulate mcv_selectivity(var, mcv_value, op)
 	 */
+	/*
+	mcvsel = mcv_selectivity(&vardata, &opproc, collation,
+							constval, varonleft,
+							&mcvsum);
+	*/
 	return 0;
 }
 
@@ -2867,15 +3007,78 @@ double join_mcv_histogram_selectivity() {
 	return 0;
 }
 
+// Calculate join selectivity for inequality functions
+double scalarineqjoinsel(PlannerInfo *root, Oid operator, bool isgt, bool iseq, JoinType jointype, Oid collation, VariableStatData *vardata1, VariableStatData *vardata2) {
+	double hist_frac_1 = 0;
+	double mcv_frac_1 = 0;
+	double null_frac_1 = 0;
+
+	double hist_frac_2 = 0;
+	double mcv_frac_2 = 0;
+	double null_frac_2 = 0;
+
+	double selec = 0;
+	double selec_inner = 0;
+
+	hist_frac_1 = 1.0 - null_frac_1 - mcv_frac_1;
+	hist_frac_2 = 1.0 - null_frac_2 - mcv_frac_2;
+
+	selec_inner = hist_frac_1 * hist_frac_2 * join_histogram_selectivity();
+	selec_inner += mcv_frac_1 * hist_frac_2 * join_mcv_histogram_selectivity();
+	selec_inner += mcv_frac_1 * hist_frac_1 * join_mcv_histogram_selectivity();
+	selec_inner += mcv_frac_1 * mcv_frac_1 * join_mcv_selectivity();
+
+	switch (jointype)
+	{
+		case JOIN_INNER:
+			selec = selec_inner;
+			break;
+		case JOIN_LEFT:
+		case JOIN_FULL:
+		case JOIN_SEMI:
+		case JOIN_ANTI:
+			// TODO: What to do for each type of join?
+			break;
+		default:
+			/* other values not expected here */
+			elog(ERROR, "unrecognized join type: %d",
+				 (int) jointype);
+			selec = 0;			/* keep compiler quiet */
+			break;
+	}
+	
+	return DEFAULT_INEQ_SEL;
+} 
+
 /*
- * Common wrapper function for the join cardinality estimators that simply
- * invoke scalarineqjoinsel().
+ * Common wrapper function for the join selectivity estimators that simply
+ * invokes scalarineqjoinsel().
  */
 static Datum
 scalarineqjoinsel_wrapper(PG_FUNCTION_ARGS, bool isgt, bool iseq)
 {
-	// TODO: Implement scalarineqjoinsel_wrapper
-	PG_RETURN_FLOAT8(DEFAULT_INEQ_SEL);
+	PlannerInfo *root = (PlannerInfo *) PG_GETARG_POINTER(0);
+	Oid			operator = PG_GETARG_OID(1);
+	List	   *args = (List *) PG_GETARG_POINTER(2);
+	JoinType	jointype = (JoinType) PG_GETARG_INT16(3);
+	SpecialJoinInfo *sjinfo = (SpecialJoinInfo *) PG_GETARG_POINTER(4);
+	Oid			collation = PG_GET_COLLATION();
+	VariableStatData vardata1;
+	VariableStatData vardata2;
+	bool		join_is_reversed;
+	double		selec;
+
+	// Get metadata for both sides of join operator
+	get_join_variables(root, args, sjinfo, &vardata1, &vardata2, &join_is_reversed);
+
+	/* The rest of the work is done by scalarineqsel(). */
+	selec = scalarineqjoinsel(root, operator, isgt, iseq, jointype, collation, &vardata1, &vardata2);
+
+	// Release stats and return
+	ReleaseVariableStats(vardata1);
+	ReleaseVariableStats(vardata2);
+
+	PG_RETURN_FLOAT8((float8) selec);
 }
 
 /*
