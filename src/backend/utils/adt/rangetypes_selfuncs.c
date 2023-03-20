@@ -1342,11 +1342,14 @@ calc_hist_join_selectivity(TypeCacheEntry *typcache,
 		prev_sel2 = cur_sel2;
 	}
 
+	/* P(X < Y) = 0.5 * Sum(...) */
+	selectivity /= 2;
+
 	/* Include remainder of hist2 if any */
 	if (j < nhist2)
 		selectivity += 1 - prev_sel2;
 
-	return selectivity / 2;
+	return selectivity;
 }
 
 /*
