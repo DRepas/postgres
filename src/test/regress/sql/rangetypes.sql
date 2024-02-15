@@ -698,3 +698,146 @@ select * from text_support_test where t <@ textrange_supp('a', 'd');
 drop table text_support_test;
 
 drop type textrange_supp;
+
+-- test range join operators
+create table test_range_join_1(ir1 int4range);
+create table test_range_join_2(ir2 int4range);
+create table test_elem_join(elem int4);
+
+insert into test_range_join_1 select int4range(g, g+10) from generate_series(1,200) g;
+insert into test_range_join_1 select int4range(g, g+10000) from generate_series(1,100) g;
+insert into test_range_join_1 select int4range(NULL,g*10,'(]') from generate_series(1,10) g;
+insert into test_range_join_1 select int4range(g*10,NULL,'[)') from generate_series(1,10) g;
+insert into test_range_join_1 select int4range(g, g+10) from generate_series(1,200) g;
+insert into test_range_join_1 select 'empty'::int4range from generate_series(1,20) g;
+insert into test_range_join_1 select NULL from generate_series(1,50) g;
+
+insert into test_range_join_2 select int4range(g+10, g+20) from generate_series(1,200) g;
+insert into test_range_join_2 select int4range(g+5000, g+15000) from generate_series(1,100) g;
+insert into test_range_join_2 select int4range(NULL,g*5,'(]') from generate_series(1,10) g;
+insert into test_range_join_2 select int4range(g*5,NULL,'[)') from generate_series(1,10) g;
+insert into test_range_join_2 select int4range(g, g+10) from generate_series(1,200) g;
+insert into test_range_join_2 select 'empty'::int4range from generate_series(1,20) g;
+insert into test_range_join_2 select NULL from generate_series(1,50) g;
+
+insert into test_elem_join select g from generate_series(1,200) g;
+insert into test_elem_join select g+10000 from generate_series(1,100) g;
+insert into test_elem_join select g*10 from generate_series(1,10) g;
+insert into test_elem_join select g from generate_series(1,20) g;
+insert into test_elem_join select NULL from generate_series(1,5) g;
+
+analyze test_range_join_1;
+analyze test_range_join_2;
+analyze test_elem_join;
+
+create function check_estimated_rows(text) returns table (estimated int, actual int)
+language plpgsql as
+$$
+declare
+    ln text;
+    tmp text[];
+    first_row bool := true;
+begin
+    for ln in
+        execute format('explain analyze %s', $1)
+    loop
+        if first_row then
+            first_row := false;
+            tmp := regexp_match(ln, 'rows=(\d*) .* rows=(\d*)');
+            return query select tmp[1]::int, tmp[2]::int;
+        end if;
+    end loop;
+end;
+$$;
+
+-- the denominator in error estimation is the count of the cartesian product
+CREATE TEMPORARY TABLE range_range_count AS
+    SELECT 
+        (SELECT COUNT(*) FROM test_range_join_1) * 
+        (SELECT COUNT(*) FROM test_range_join_2) AS total_product;
+
+CREATE TEMPORARY TABLE elem_range_count AS
+    SELECT 
+        (SELECT COUNT(*) FROM test_range_join_1) * 
+        (SELECT COUNT(*) FROM test_elem_join) AS total_product;
+
+SELECT ABS(CAST(estimated AS float) - actual) / total_product < 0.01 AS ok
+FROM check_estimated_rows(
+  'select * from test_range_join_1, test_range_join_2 where ir1 < ir2')
+JOIN range_range_count ON true;
+
+SELECT ABS(CAST(estimated AS float) - actual) / total_product < 0.01 AS ok
+FROM check_estimated_rows(
+  'select * from test_range_join_1, test_range_join_2 where ir1 <= ir2')
+JOIN range_range_count ON true;
+
+SELECT ABS(CAST(estimated AS float) - actual) / total_product < 0.01 AS ok
+FROM check_estimated_rows(
+  'select * from test_range_join_1, test_range_join_2 where ir1 > ir2')
+JOIN range_range_count ON true;
+
+SELECT ABS(CAST(estimated AS float) - actual) / total_product < 0.01 AS ok
+FROM check_estimated_rows(
+  'select * from test_range_join_1, test_range_join_2 where ir1 >= ir2')
+JOIN range_range_count ON true;
+
+SELECT ABS(CAST(estimated AS float) - actual) / total_product < 0.01 AS ok
+FROM check_estimated_rows(
+  'select * from test_range_join_1, test_range_join_2 where ir1 && ir2')
+JOIN range_range_count ON true;
+
+-- lower estimation accuracy for <@ and @> operands
+SELECT ABS(CAST(estimated AS float) - actual) / total_product < 0.2 AS ok
+FROM check_estimated_rows(
+  'select * from test_range_join_1, test_range_join_2 where ir1 <@ ir2')
+JOIN range_range_count ON true;
+
+SELECT ABS(CAST(estimated AS float) - actual) / total_product < 0.2 AS ok
+FROM check_estimated_rows(
+  'select * from test_range_join_1, test_range_join_2 where ir1 @> ir2')
+JOIN range_range_count ON true;
+
+SELECT ABS(CAST(estimated AS float) - actual) / total_product < 0.01 AS ok
+FROM check_estimated_rows(
+  'select * from test_range_join_1, test_range_join_2 where ir1 << ir2')
+JOIN range_range_count ON true;
+
+SELECT ABS(CAST(estimated AS float) - actual) / total_product < 0.01 AS ok
+FROM check_estimated_rows(
+  'select * from test_range_join_1, test_range_join_2 where ir1 >> ir2')
+JOIN range_range_count ON true;
+
+SELECT ABS(CAST(estimated AS float) - actual) / total_product < 0.01 AS ok
+FROM check_estimated_rows(
+  'select * from test_range_join_1, test_range_join_2 where ir1 &< ir2')
+JOIN range_range_count ON true;
+
+SELECT ABS(CAST(estimated AS float) - actual) / total_product < 0.01 AS ok
+FROM check_estimated_rows(
+  'select * from test_range_join_1, test_range_join_2 where ir1 &> ir2')
+JOIN range_range_count ON true;
+
+SELECT ABS(CAST(estimated AS float) - actual) / total_product < 0.01 AS ok
+FROM check_estimated_rows(
+  'select * from test_range_join_1, test_range_join_2 where ir1 -|- ir2')
+JOIN range_range_count ON true;
+
+-- lower estimation accuracy for <@ and @> operands
+SELECT ABS(CAST(estimated AS float) - actual) / total_product < 0.2 AS ok
+FROM check_estimated_rows(
+  'select * from test_elem_join, test_range_join_1 where elem <@ ir1')
+JOIN elem_range_count ON true;
+
+SELECT ABS(CAST(estimated AS float) - actual) / total_product < 0.2 AS ok
+FROM check_estimated_rows(
+  'select * from test_range_join_1, test_elem_join where ir1 @> elem')
+JOIN elem_range_count ON true;
+
+drop function check_estimated_rows;
+
+drop table range_range_count;
+drop table elem_range_count;
+
+drop table test_range_join_1;
+drop table test_range_join_2;
+drop table test_elem_join;
