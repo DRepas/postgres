@@ -18,6 +18,7 @@
 #include "access/htup.h"
 #include "fmgr.h"
 #include "nodes/pathnodes.h"
+#include "utils/rangetypes.h"
 
 
 /*
@@ -237,5 +238,17 @@ extern Selectivity scalararraysel_containment(PlannerInfo *root,
 											  Node *leftop, Node *rightop,
 											  Oid elemtype, bool isEquality, bool useOr,
 											  int varRelid);
+
+/* Function in rangetypes_selfuncs.c */
+extern double calc_hist_selectivity_scalar(TypeCacheEntry *typcache, const RangeBound *constbound, const RangeBound *hist, int hist_nvalues, bool equal);
+extern int rbound_bsearch(TypeCacheEntry *typcache, const RangeBound *value, const RangeBound *hist, int hist_length, bool equal);
+extern int length_hist_bsearch(Datum *length_hist_values, int length_hist_nvalues, double value, bool equal);
+extern float8 get_position(TypeCacheEntry *typcache, const RangeBound *value, const RangeBound *hist1, const RangeBound *hist2);
+extern double get_len_position(double value, double hist1, double hist2);
+extern float8 get_distance(TypeCacheEntry *typcache, const RangeBound *bound1, const RangeBound *bound2);
+extern double calc_length_hist_frac(Datum *length_hist_values, int length_hist_nvalues, double length1, double length2, bool equal);
+extern double calc_hist_selectivity_contained(TypeCacheEntry *typcache, const RangeBound *lower, RangeBound *upper, const RangeBound *hist_lower, int hist_nvalues, Datum *length_hist_values, int length_hist_nvalues);
+extern double calc_hist_selectivity_contains(TypeCacheEntry *typcache, const RangeBound *lower, const RangeBound *upper, const RangeBound *hist_lower, int hist_nvalues, Datum *length_hist_values, int length_hist_nvalues);
+extern double calc_hist_join_selectivity(TypeCacheEntry *typcache, const RangeBound *hist1, int nhist1, const RangeBound *hist2, int nhist2);
 
 #endif							/* SELFUNCS_H */
