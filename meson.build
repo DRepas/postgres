@@ -196,26 +196,7 @@ endif
 # that purpose.
 portname = host_system
 
-if host_system == 'aix'
-  library_path_var = 'LIBPATH'
-
-  export_file_format = 'aix'
-  export_fmt = '-Wl,-bE:@0@'
-  mod_link_args_fmt = ['-Wl,-bI:@0@']
-  mod_link_with_dir = 'libdir'
-  mod_link_with_name = '@0@.imp'
-
-  # M:SRE sets a flag indicating that an object is a shared library. Seems to
-  # work in some circumstances without, but required in others.
-  ldflags_sl += '-Wl,-bM:SRE'
-  ldflags_be += '-Wl,-brtllib'
-
-  # Native memset() is faster, tested on:
-  # - AIX 5.1 and 5.2, XLC 6.0 (IBM's cc)
-  # - AIX 5.3 ML3, gcc 4.0.1
-  memset_loop_limit = 0
-
-elif host_system == 'cygwin'
+if host_system == 'cygwin'
   sema_kind = 'unnamed_posix'
   cppflags += '-D_GNU_SOURCE'
   dlsuffix = '.dll'
@@ -241,10 +222,20 @@ elif host_system == 'darwin'
     cflags += ['-isysroot', pg_sysroot]
     ldflags += ['-isysroot', pg_sysroot]
   endif
+
   # meson defaults to -Wl,-undefined,dynamic_lookup for modules, which we
   # don't want because a) it's different from what we do for autoconf, b) it
-  # causes warnings starting in macOS Ventura
-  ldflags_mod += ['-Wl,-undefined,error']
+  # causes warnings in macOS Ventura. But using -Wl,-undefined,error causes a
+  # warning starting in Sonoma. So only add -Wl,-undefined,error if it does
+  # not cause a warning.
+  if cc.has_multi_link_arguments('-Wl,-undefined,error', '-Werror')
+    ldflags_mod += '-Wl,-undefined,error'
+  endif
+
+  # Starting in Sonoma, the linker warns about the same library being
+  # linked twice.  Which can easily happen when multiple dependencies
+  # depend on the same library. Quiesce the ill considered warning.
+  ldflags += cc.get_supported_link_arguments('-Wl,-no_warn_duplicate_libraries')
 
 elif host_system == 'freebsd'
   sema_kind = 'unnamed_posix'
@@ -1499,30 +1490,49 @@ sizeof_long = cc.sizeof('long', args: test_c_args)
 cdata.set('SIZEOF_LONG', sizeof_long)
 if sizeof_long == 8
   cdata.set('HAVE_LONG_INT_64', 1)
-  cdata.set('PG_INT64_TYPE', 'long int')
+  pg_int64_type = 'long int'
   cdata.set_quoted('INT64_MODIFIER', 'l')
 elif sizeof_long == 4 and cc.sizeof('long long', args: test_c_args) == 8
   cdata.set('HAVE_LONG_LONG_INT_64', 1)
-  cdata.set('PG_INT64_TYPE', 'long long int')
+  pg_int64_type = 'long long int'
   cdata.set_quoted('INT64_MODIFIER', 'll')
 else
   error('do not know how to get a 64bit int')
 endif
+cdata.set('PG_INT64_TYPE', pg_int64_type)
 
 if host_machine.endian() == 'big'
   cdata.set('WORDS_BIGENDIAN', 1)
 endif
 
+# Determine memory alignment requirements for the basic C data types.
+
 alignof_types = ['short', 'int', 'long', 'double']
-maxalign = 0
 foreach t : alignof_types
   align = cc.alignment(t, args: test_c_args)
-  if maxalign < align
-    maxalign = align
-  endif
   cdata.set('ALIGNOF_@0@'.format(t.to_upper()), align)
 endforeach
-cdata.set('MAXIMUM_ALIGNOF', maxalign)
+
+# Compute maximum alignment of any basic type.
+#
+# We require 'double' to have the strictest alignment among the basic types,
+# because otherwise the C ABI might impose 8-byte alignment on some of the
+# other C types that correspond to TYPALIGN_DOUBLE SQL types.  That could
+# cause a mismatch between the tuple layout and the C struct layout of a
+# catalog tuple.  We used to carefully order catalog columns such that any
+# fixed-width, attalign=4 columns were at offsets divisible by 8 regardless
+# of MAXIMUM_ALIGNOF to avoid that, but we no longer support any platforms
+# where TYPALIGN_DOUBLE != MAXIMUM_ALIGNOF.
+#
+# We assume without checking that int64's alignment is at least as strong
+# as long, char, short, or int.  Note that we intentionally do not consider
+# any types wider than 64 bits, as allowing MAXIMUM_ALIGNOF to exceed 8
+# would be too much of a penalty for disk and memory space.
+alignof_double = cdata.get('ALIGNOF_DOUBLE')
+if cc.alignment(pg_int64_type, args: test_c_args) > alignof_double
+  error('alignment of int64 is greater than the alignment of double')
+endif
+cdata.set('MAXIMUM_ALIGNOF', alignof_double)
 
 cdata.set('SIZEOF_VOID_P', cc.sizeof('void *', args: test_c_args))
 cdata.set('SIZEOF_SIZE_T', cc.sizeof('size_t', args: test_c_args))
@@ -1571,7 +1581,7 @@ if cc.links('''
   if not meson.is_cross_build()
     r = cc.run('''
     /* This must match the corresponding code in c.h: */
-    #if defined(__GNUC__) || defined(__SUNPRO_C) || defined(__IBMC__)
+    #if defined(__GNUC__) || defined(__SUNPRO_C)
     #define pg_attribute_aligned(a) __attribute__((aligned(a)))
     #elif defined(_MSC_VER)
     #define pg_attribute_aligned(a) __declspec(align(a))
@@ -2371,10 +2381,6 @@ endif
 # conflict.
 #
 # We assume C99 support, so we don't need to make this conditional.
-#
-# XXX: Historically we allowed platforms to disable restrict in template
-# files, but that was only added for AIX when building with XLC, which we
-# don't support yet.
 cdata.set('pg_restrict', '__restrict')
 
 
@@ -2424,6 +2430,7 @@ func_checks = [
   ['backtrace_symbols', {'dependencies': [execinfo_dep]}],
   ['clock_gettime', {'dependencies': [rt_dep], 'define': false}],
   ['copyfile'],
+  ['copy_file_range'],
   # gcc/clang's sanitizer helper library provides dlopen but not dlsym, thus
   # when enabling asan the dlopen check doesn't notice that -ldl is actually
   # required. Just checking for dlsym() ought to suffice.
@@ -3349,6 +3356,71 @@ run_target('help',
     files('doc/src/sgml/targets-meson.txt'),
   ]
 )
+
+
+
+###############################################################
+# Distribution archive
+###############################################################
+
+# Meson has its own distribution building command (meson dist), but we
+# are not using that at this point.  The main problem is that, the way
+# they have implemented it, it is not deterministic.  Also, we want it
+# to be equivalent to the "make" version for the time being.  But the
+# target name "dist" in meson is reserved for that reason, so we call
+# the custom target "pgdist".
+
+git = find_program('git', required: false, native: true, disabler: true)
+bzip2 = find_program('bzip2', required: false, native: true)
+
+distdir = meson.project_name() + '-' + meson.project_version()
+
+# Note: core.autocrlf=false is needed to avoid line-ending conversion
+# in case the environment has a different setting.  Without this, a
+# tarball created on Windows might be different than on, and unusable
+# on, Unix machines.
+
+tar_gz = custom_target('tar.gz',
+  build_always_stale: true,
+  command: [git, '-C', '@SOURCE_ROOT@',
+            '-c', 'core.autocrlf=false',
+            'archive',
+            '--format', 'tar.gz',
+            '-9',
+            '--prefix', distdir + '/',
+            '-o', join_paths(meson.build_root(), '@OUTPUT@'),
+            'HEAD', '.'],
+  output: distdir + '.tar.gz',
+)
+
+if bzip2.found()
+  tar_bz2 = custom_target('tar.bz2',
+    build_always_stale: true,
+    command: [git, '-C', '@SOURCE_ROOT@',
+              '-c', 'core.autocrlf=false',
+              '-c', 'tar.tar.bz2.command="@0@" -c'.format(bzip2.path()),
+              'archive',
+              '--format', 'tar.bz2',
+              '--prefix', distdir + '/',
+              '-o', join_paths(meson.build_root(), '@OUTPUT@'),
+              'HEAD', '.'],
+    output: distdir + '.tar.bz2',
+  )
+else
+  tar_bz2 = custom_target('tar.bz2',
+    command: [perl, '-e', 'exit 1'],
+    output: distdir + '.tar.bz2',
+  )
+endif
+
+alias_target('pgdist', [tar_gz, tar_bz2])
+
+# Make the standard "dist" command fail, to prevent accidental use.
+# But not if we are in a subproject, in case the parent project wants to
+# create a dist using the standard Meson command.
+if not meson.is_subproject()
+  meson.add_dist_script(perl, '-e', 'exit 1')
+endif
 
 
 
