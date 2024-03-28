@@ -23,16 +23,10 @@
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "executor/nodeModifyTable.h"
-#include "nodes/nodeFuncs.h"
-#include "parser/parse_relation.h"
-#include "parser/parsetree.h"
 #include "replication/logicalrelation.h"
-#include "storage/bufmgr.h"
 #include "storage/lmgr.h"
 #include "utils/builtins.h"
-#include "utils/datum.h"
 #include "utils/lsyscache.h"
-#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
@@ -583,6 +577,7 @@ ExecSimpleRelationUpdate(ResultRelInfo *resultRelInfo,
 	{
 		List	   *recheckIndexes = NIL;
 		TU_UpdateIndexes update_indexes;
+		TupleTableSlot *oldSlot = NULL;
 
 		/* Compute stored generated columns */
 		if (rel->rd_att->constr &&
@@ -596,8 +591,12 @@ ExecSimpleRelationUpdate(ResultRelInfo *resultRelInfo,
 		if (rel->rd_rel->relispartition)
 			ExecPartitionCheck(resultRelInfo, slot, estate, true);
 
+		if (resultRelInfo->ri_TrigDesc &&
+			resultRelInfo->ri_TrigDesc->trig_update_after_row)
+			oldSlot = ExecGetTriggerOldSlot(estate, resultRelInfo);
+
 		simple_table_tuple_update(rel, tid, slot, estate->es_snapshot,
-								  &update_indexes);
+								  &update_indexes, oldSlot);
 
 		if (resultRelInfo->ri_NumIndices > 0 && (update_indexes != TU_None))
 			recheckIndexes = ExecInsertIndexTuples(resultRelInfo,
@@ -608,7 +607,7 @@ ExecSimpleRelationUpdate(ResultRelInfo *resultRelInfo,
 		/* AFTER ROW UPDATE Triggers */
 		ExecARUpdateTriggers(estate, resultRelInfo,
 							 NULL, NULL,
-							 tid, NULL, slot,
+							 NULL, oldSlot, slot,
 							 recheckIndexes, NULL, false);
 
 		list_free(recheckIndexes);
@@ -642,12 +641,18 @@ ExecSimpleRelationDelete(ResultRelInfo *resultRelInfo,
 
 	if (!skip_tuple)
 	{
+		TupleTableSlot *oldSlot = NULL;
+
+		if (resultRelInfo->ri_TrigDesc &&
+			resultRelInfo->ri_TrigDesc->trig_delete_after_row)
+			oldSlot = ExecGetTriggerOldSlot(estate, resultRelInfo);
+
 		/* OK, delete the tuple */
-		simple_table_tuple_delete(rel, tid, estate->es_snapshot);
+		simple_table_tuple_delete(rel, tid, estate->es_snapshot, oldSlot);
 
 		/* AFTER ROW DELETE Triggers */
 		ExecARDeleteTriggers(estate, resultRelInfo,
-							 tid, NULL, NULL, false);
+							 NULL, oldSlot, NULL, false);
 	}
 }
 

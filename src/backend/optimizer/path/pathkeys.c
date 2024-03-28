@@ -19,9 +19,7 @@
 
 #include "access/stratnum.h"
 #include "catalog/pg_opfamily.h"
-#include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-#include "nodes/plannodes.h"
 #include "optimizer/cost.h"
 #include "optimizer/optimizer.h"
 #include "optimizer/pathnode.h"
@@ -2143,12 +2141,6 @@ pathkeys_useful_for_ordering(PlannerInfo *root, List *pathkeys)
 {
 	int			n_common_pathkeys;
 
-	if (root->query_pathkeys == NIL)
-		return 0;				/* no special ordering requested */
-
-	if (pathkeys == NIL)
-		return 0;				/* unordered path */
-
 	(void) pathkeys_count_contained_in(root->query_pathkeys, pathkeys,
 									   &n_common_pathkeys);
 
@@ -2184,10 +2176,6 @@ pathkeys_useful_for_grouping(PlannerInfo *root, List *pathkeys)
 	if (root->group_pathkeys == NIL)
 		return 0;
 
-	/* unordered path */
-	if (pathkeys == NIL)
-		return 0;
-
 	/* walk the pathkeys and search for matching group key */
 	foreach(key, pathkeys)
 	{
@@ -2201,6 +2189,22 @@ pathkeys_useful_for_grouping(PlannerInfo *root, List *pathkeys)
 	}
 
 	return n;
+}
+
+/*
+ * pathkeys_useful_for_setop
+ *		Count the number of leading common pathkeys root's 'setop_pathkeys' in
+ *		'pathkeys'.
+ */
+static int
+pathkeys_useful_for_setop(PlannerInfo *root, List *pathkeys)
+{
+	int			n_common_pathkeys;
+
+	(void) pathkeys_count_contained_in(root->setop_pathkeys, pathkeys,
+									   &n_common_pathkeys);
+
+	return n_common_pathkeys;
 }
 
 /*
@@ -2220,6 +2224,9 @@ truncate_useless_pathkeys(PlannerInfo *root,
 	if (nuseful2 > nuseful)
 		nuseful = nuseful2;
 	nuseful2 = pathkeys_useful_for_grouping(root, pathkeys);
+	if (nuseful2 > nuseful)
+		nuseful = nuseful2;
+	nuseful2 = pathkeys_useful_for_setop(root, pathkeys);
 	if (nuseful2 > nuseful)
 		nuseful = nuseful2;
 
