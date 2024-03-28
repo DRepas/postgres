@@ -14,7 +14,23 @@
 
 #include "replication/walreceiver.h"
 
-extern void ValidateSlotSyncParams(void);
+extern PGDLLIMPORT bool sync_replication_slots;
+
+/*
+ * GUCs needed by slot sync worker to connect to the primary
+ * server and carry on with slots synchronization.
+ */
+extern PGDLLIMPORT char *PrimaryConnInfo;
+extern PGDLLIMPORT char *PrimarySlotName;
+
+extern char *CheckAndGetDbnameFromConninfo(void);
+extern bool ValidateSlotSyncParams(int elevel);
+
+extern void ReplSlotSyncWorkerMain(char *startup_data, size_t startup_data_len) pg_attribute_noreturn();
+extern int	StartSlotSyncWorker(void);
+
+extern void ShutDownSlotSync(void);
+extern bool SlotSyncWorkerCanRestart(void);
 extern bool IsSyncingReplicationSlots(void);
 extern Size SlotSyncShmemSize(void);
 extern void SlotSyncShmemInit(void);

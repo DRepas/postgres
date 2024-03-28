@@ -17,20 +17,22 @@
 
 #include "access/hash.h"
 #include "access/htup_details.h"
-#include "access/nbtree.h"
 #include "bootstrap/bootstrap.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_cast.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/pg_index.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_publication.h"
 #include "catalog/pg_range.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_subscription.h"
@@ -44,7 +46,6 @@
 #include "utils/datum.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
-#include "utils/rel.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
@@ -2063,6 +2064,28 @@ get_rel_persistence(Oid relid)
 		elog(ERROR, "cache lookup failed for relation %u", relid);
 	reltup = (Form_pg_class) GETSTRUCT(tp);
 	result = reltup->relpersistence;
+	ReleaseSysCache(tp);
+
+	return result;
+}
+
+/*
+ * get_rel_relam
+ *
+ *		Returns the relam associated with a given relation.
+ */
+Oid
+get_rel_relam(Oid relid)
+{
+	HeapTuple	tp;
+	Form_pg_class reltup;
+	Oid			result;
+
+	tp = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for relation %u", relid);
+	reltup = (Form_pg_class) GETSTRUCT(tp);
+	result = reltup->relam;
 	ReleaseSysCache(tp);
 
 	return result;

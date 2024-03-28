@@ -173,7 +173,6 @@ AutoVacOpts
 AutoVacuumShmemStruct
 AutoVacuumWorkItem
 AutoVacuumWorkItemType
-AuxProcType
 BF_ctx
 BF_key
 BF_word
@@ -232,6 +231,7 @@ BY_HANDLE_FILE_INFORMATION
 Backend
 BackendId
 BackendParameters
+BackendStartupData
 BackendState
 BackendType
 BackgroundWorker
@@ -333,6 +333,8 @@ BuildAccumulator
 BuiltinScript
 BulkInsertState
 BulkInsertStateData
+BulkWriteBuffer
+BulkWriteState
 CACHESIGN
 CAC_state
 CCFastEqualFN
@@ -387,6 +389,7 @@ ClientCertMode
 ClientCertName
 ClientConnectionInfo
 ClientData
+ClientSocket
 ClonePtrType
 ClosePortalStmt
 ClosePtrType
@@ -848,6 +851,7 @@ FormData_pg_ts_parser
 FormData_pg_ts_template
 FormData_pg_type
 FormData_pg_user_mapping
+FormExtraData_pg_attribute
 Form_pg_aggregate
 Form_pg_am
 Form_pg_amop
@@ -1208,6 +1212,7 @@ InitializeDSMForeignScan_function
 InitializeWorkerForeignScan_function
 InjectionPointCacheEntry
 InjectionPointEntry
+InjectionPointSharedState
 InlineCodeBlock
 InsertStmt
 Instrumentation
@@ -1257,6 +1262,7 @@ Join
 JoinCostWorkspace
 JoinDomain
 JoinExpr
+JsonFuncExpr
 JoinHashEntry
 JoinPath
 JoinPathExtraData
@@ -1267,14 +1273,20 @@ JsObject
 JsValue
 JsonAggConstructor
 JsonAggState
+JsonArgument
 JsonArrayAgg
 JsonArrayConstructor
 JsonArrayQueryConstructor
 JsonBaseObjectInfo
+JsonBehavior
+JsonBehaviorType
 JsonConstructorExpr
 JsonConstructorExprState
 JsonConstructorType
 JsonEncoding
+JsonExpr
+JsonExprOp
+JsonExprState
 JsonFormat
 JsonFormatType
 JsonHashEntry
@@ -1296,6 +1308,7 @@ JsonParseContext
 JsonParseErrorType
 JsonPath
 JsonPathBool
+JsonPathDatatypeStatus
 JsonPathExecContext
 JsonPathExecResult
 JsonPathGinAddPathItemFunc
@@ -1308,10 +1321,13 @@ JsonPathGinPathItem
 JsonPathItem
 JsonPathItemType
 JsonPathKeyword
+JsonPathMutableContext
 JsonPathParseItem
 JsonPathParseResult
 JsonPathPredicateCallback
 JsonPathString
+JsonPathVariable
+JsonQuotes
 JsonReturning
 JsonScalarExpr
 JsonSemAction
@@ -1328,6 +1344,7 @@ JsonValueExpr
 JsonValueList
 JsonValueListIterator
 JsonValueType
+JsonWrapper
 Jsonb
 JsonbAggState
 JsonbContainer
@@ -1574,6 +1591,7 @@ MergeJoinState
 MergePath
 MergeScanSelCache
 MergeStmt
+MergeSupportFunc
 MergeWhenClause
 MetaCommand
 MinMaxAggInfo
@@ -1669,7 +1687,6 @@ ObjectAddressAndFlags
 ObjectAddressExtra
 ObjectAddressStack
 ObjectAddresses
-ObjectClass
 ObjectPropertyType
 ObjectType
 ObjectWithArgs
@@ -1760,6 +1777,7 @@ PG_Locale_Strategy
 PG_Lock_Status
 PG_init_t
 PGcancel
+PGcancelConn
 PGcmdQueueEntry
 PGconn
 PGdataValue
@@ -1956,6 +1974,7 @@ ParamsErrorCbData
 ParentMapEntry
 ParseCallbackState
 ParseExprKind
+ParseLoc
 ParseNamespaceColumn
 ParseNamespaceItem
 ParseParamRefHook
@@ -2018,6 +2037,7 @@ PendingFsyncEntry
 PendingRelDelete
 PendingRelSync
 PendingUnlinkEntry
+PendingWrite
 PendingWriteback
 PerLockTagEntry
 PerlInterpreter
@@ -2129,6 +2149,7 @@ PortalStrategy
 PostParseColumnRefHook
 PostgresPollingStatusType
 PostingItem
+PostmasterChildType
 PreParseColumnRefHook
 PredClass
 PredIterInfo
@@ -2170,6 +2191,7 @@ ProjectionPath
 PromptInterruptContext
 ProtocolVersion
 PrsStorage
+PruneReason
 PruneResult
 PruneState
 PruneStepResult
@@ -2420,6 +2442,7 @@ RuleLock
 RuleStmt
 RunningTransactions
 RunningTransactionsData
+SASLStatus
 SC_HANDLE
 SECURITY_ATTRIBUTES
 SECURITY_STATUS
@@ -2647,6 +2670,7 @@ SplitPoint
 SplitTextOutputData
 SplitVar
 StackElem
+StandbySlotNamesConfigData
 StartDataPtrType
 StartLOPtrType
 StartLOsPtrType
@@ -3251,6 +3275,7 @@ check_network_data
 check_object_relabel_type
 check_password_hook_type
 check_ungrouped_columns_context
+child_process_kind
 chr
 cmpEntriesArg
 codes_t
@@ -3571,7 +3596,6 @@ pg_cryptohash_errno
 pg_cryptohash_type
 pg_ctype_cache
 pg_enc
-pg_enc2gettext
 pg_enc2name
 pg_encname
 pg_fe_sasl_mech
@@ -3734,6 +3758,7 @@ rewind_source
 rewrite_event
 rf_context
 rm_detail_t
+rt_node_class_test_elem
 role_auth_extra
 rolename_hash
 row_security_policy_hook_type
@@ -3943,8 +3968,6 @@ xl_hash_update_meta_page
 xl_hash_vacuum_one_page
 xl_heap_confirm
 xl_heap_delete
-xl_heap_freeze_page
-xl_heap_freeze_plan
 xl_heap_header
 xl_heap_inplace
 xl_heap_insert
@@ -3956,7 +3979,6 @@ xl_heap_prune
 xl_heap_rewrite_mapping
 xl_heap_truncate
 xl_heap_update
-xl_heap_vacuum
 xl_heap_visible
 xl_invalid_page
 xl_invalid_page_key
@@ -3996,6 +4018,9 @@ xl_xact_stats_items
 xl_xact_subxacts
 xl_xact_twophase
 xl_xact_xinfo
+xlhp_freeze_plan
+xlhp_freeze_plans
+xlhp_prune_items
 xmlBuffer
 xmlBufferPtr
 xmlChar
@@ -4034,6 +4059,7 @@ BlockRefTableReader
 BlockRefTableSerializedEntry
 BlockRefTableWriter
 SummarizerReadLocalXLogPrivate
+SysloggerStartupData
 WalSummarizerData
 WalSummaryFile
 WalSummaryIO
@@ -4052,3 +4078,8 @@ rfile
 ws_options
 ws_file_info
 PathKeyInfo
+TidStore
+TidStoreIter
+TidStoreIterResult
+BlocktableEntry
+ItemArray

@@ -59,7 +59,6 @@
 #include "access/xlog_internal.h"
 #include "access/xlogarchive.h"
 #include "access/xloginsert.h"
-#include "access/xlogprefetcher.h"
 #include "access/xlogreader.h"
 #include "access/xlogrecovery.h"
 #include "access/xlogutils.h"
@@ -79,7 +78,6 @@
 #include "postmaster/startup.h"
 #include "postmaster/walsummarizer.h"
 #include "postmaster/walwriter.h"
-#include "replication/logical.h"
 #include "replication/origin.h"
 #include "replication/slot.h"
 #include "replication/snapbuild.h"
@@ -90,20 +88,18 @@
 #include "storage/ipc.h"
 #include "storage/large_object.h"
 #include "storage/latch.h"
-#include "storage/pmsignal.h"
 #include "storage/predicate.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "storage/reinit.h"
-#include "storage/smgr.h"
 #include "storage/spin.h"
 #include "storage/sync.h"
 #include "utils/guc_hooks.h"
 #include "utils/guc_tables.h"
+#include "utils/injection_point.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/relmapper.h"
-#include "utils/pg_rusage.h"
 #include "utils/snapmgr.h"
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
@@ -470,9 +466,8 @@ typedef struct XLogCtlData
 
 	XLogSegNo	lastRemovedSegNo;	/* latest removed/recycled XLOG segment */
 
-	/* Fake LSN counter, for unlogged relations. Protected by ulsn_lck. */
-	XLogRecPtr	unloggedLSN;
-	slock_t		ulsn_lck;
+	/* Fake LSN counter, for unlogged relations. */
+	pg_atomic_uint64 unloggedLSN;
 
 	/* Time and LSN of last xlog segment switch. Protected by WALWriteLock. */
 	pg_time_t	lastSegSwitchTime;
@@ -1379,7 +1374,7 @@ WALInsertLockAcquire(void)
 	static int	lockToTry = -1;
 
 	if (lockToTry == -1)
-		lockToTry = MyProc->pgprocno % NUM_XLOGINSERT_LOCKS;
+		lockToTry = MyProcNumber % NUM_XLOGINSERT_LOCKS;
 	MyLockNo = lockToTry;
 
 	/*
@@ -1710,12 +1705,13 @@ GetXLogBuffer(XLogRecPtr ptr, TimeLineID tli)
  * of bytes read successfully.
  *
  * Fewer than 'count' bytes may be read if some of the requested WAL data has
- * already been evicted from the WAL buffers, or if the caller requests data
- * that is not yet available.
+ * already been evicted.
  *
  * No locks are taken.
  *
- * The 'tli' argument is only used as a convenient safety check so that
+ * Caller should ensure that it reads no further than LogwrtResult.Write
+ * (which should have been updated by the caller when determining how far to
+ * read). The 'tli' argument is only used as a convenient safety check so that
  * callers do not read from WAL buffers on a historical timeline.
  */
 Size
@@ -1724,26 +1720,13 @@ WALReadFromBuffers(char *dstbuf, XLogRecPtr startptr, Size count,
 {
 	char	   *pdst = dstbuf;
 	XLogRecPtr	recptr = startptr;
-	XLogRecPtr	upto;
-	Size		nbytes;
+	Size		nbytes = count;
 
 	if (RecoveryInProgress() || tli != GetWALInsertionTimeLine())
 		return 0;
 
 	Assert(!XLogRecPtrIsInvalid(startptr));
-
-	/*
-	 * Don't read past the available WAL data.
-	 *
-	 * Check using local copy of LogwrtResult. Ordinarily it's been updated by
-	 * the caller when determining how far to read; but if not, it just means
-	 * we'll read less data.
-	 *
-	 * XXX: the available WAL could be extended to the WAL insert pointer by
-	 * calling WaitXLogInsertionsToFinish().
-	 */
-	upto = Min(startptr + count, LogwrtResult.Write);
-	nbytes = upto - startptr;
+	Assert(startptr + count <= LogwrtResult.Write);
 
 	/*
 	 * Loop through the buffers without a lock. For each buffer, atomically
@@ -4510,14 +4493,7 @@ DataChecksumsEnabled(void)
 XLogRecPtr
 GetFakeLSNForUnloggedRel(void)
 {
-	XLogRecPtr	nextUnloggedLSN;
-
-	/* increment the unloggedLSN counter, need SpinLock */
-	SpinLockAcquire(&XLogCtl->ulsn_lck);
-	nextUnloggedLSN = XLogCtl->unloggedLSN++;
-	SpinLockRelease(&XLogCtl->ulsn_lck);
-
-	return nextUnloggedLSN;
+	return pg_atomic_fetch_add_u64(&XLogCtl->unloggedLSN, 1);
 }
 
 /*
@@ -4933,7 +4909,7 @@ XLOGShmemInit(void)
 
 	SpinLockInit(&XLogCtl->Insert.insertpos_lck);
 	SpinLockInit(&XLogCtl->info_lck);
-	SpinLockInit(&XLogCtl->ulsn_lck);
+	pg_atomic_init_u64(&XLogCtl->unloggedLSN, InvalidXLogRecPtr);
 }
 
 /*
@@ -5538,9 +5514,11 @@ StartupXLOG(void)
 	 * the unlogged LSN counter can be reset too.
 	 */
 	if (ControlFile->state == DB_SHUTDOWNED)
-		XLogCtl->unloggedLSN = ControlFile->unloggedLSN;
+		pg_atomic_write_membarrier_u64(&XLogCtl->unloggedLSN,
+									   ControlFile->unloggedLSN);
 	else
-		XLogCtl->unloggedLSN = FirstNormalUnloggedLSN;
+		pg_atomic_write_membarrier_u64(&XLogCtl->unloggedLSN,
+									   FirstNormalUnloggedLSN);
 
 	/*
 	 * Copy any missing timeline history files between 'now' and the recovery
@@ -7122,9 +7100,7 @@ CreateCheckPoint(int flags)
 	 * unused on non-shutdown checkpoints, but seems useful to store it always
 	 * for debugging purposes.
 	 */
-	SpinLockAcquire(&XLogCtl->ulsn_lck);
-	ControlFile->unloggedLSN = XLogCtl->unloggedLSN;
-	SpinLockRelease(&XLogCtl->ulsn_lck);
+	ControlFile->unloggedLSN = pg_atomic_read_membarrier_u64(&XLogCtl->unloggedLSN);
 
 	UpdateControlFile();
 	LWLockRelease(ControlFileLock);
@@ -7547,6 +7523,12 @@ CreateRestartPoint(int flags)
 	update_checkpoint_display(flags, true, false);
 
 	CheckPointGuts(lastCheckPoint.redo, flags);
+
+	/*
+	 * This location needs to be after CheckPointGuts() to ensure that some
+	 * work has already happened during this checkpoint.
+	 */
+	INJECTION_POINT("create-restart-point");
 
 	/*
 	 * Remember the prior checkpoint's redo ptr for

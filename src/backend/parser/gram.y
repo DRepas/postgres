@@ -338,6 +338,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>    alter_identity_column_option_list
 %type <defelt>  alter_identity_column_option
 %type <node>	set_statistics_value
+%type <str>		set_access_method_name
 
 %type <list>	createdb_opt_list createdb_opt_items copy_opt_list
 				transaction_mode_list
@@ -522,12 +523,13 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				 SetResetClause FunctionSetResetClause
 
 %type <node>	TableElement TypedTableElement ConstraintElem TableFuncElement
-%type <node>	columnDef columnOptions
+%type <node>	columnDef columnOptions optionalPeriodName
 %type <defelt>	def_elem reloption_elem old_aggr_elem operator_def_elem
 %type <node>	def_arg columnElem where_clause where_or_current_clause
 				a_expr b_expr c_expr AexprConst indirection_el opt_slice_bound
 				columnref in_expr having_clause func_table xmltable array_expr
 				OptWhereClause operator_def_arg
+%type <list>	opt_column_and_period_list
 %type <list>	rowsfrom_item rowsfrom_list opt_col_def_list
 %type <boolean> opt_ordinality opt_without_overlaps
 %type <list>	ExclusionConstraintList ExclusionConstraintElem
@@ -652,10 +654,19 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				json_returning_clause_opt
 				json_name_and_value
 				json_aggregate_func
+				json_argument
+				json_behavior
+				json_on_error_clause_opt
 %type <list>	json_name_and_value_list
 				json_value_expr_list
 				json_array_aggregate_order_by_clause_opt
-%type <ival>	json_predicate_type_constraint
+				json_arguments
+				json_behavior_clause_opt
+				json_passing_clause_opt
+%type <ival>	json_behavior_type
+				json_predicate_type_constraint
+				json_quotes_clause_opt
+				json_wrapper_behavior
 %type <boolean>	json_key_uniqueness_constraint_opt
 				json_object_constructor_null_clause_opt
 				json_array_constructor_null_clause_opt
@@ -696,7 +707,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	CACHE CALL CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLLATION COLUMN COLUMNS COMMENT COMMENTS COMMIT
-	COMMITTED COMPRESSION CONCURRENTLY CONFIGURATION CONFLICT
+	COMMITTED COMPRESSION CONCURRENTLY CONDITIONAL CONFIGURATION CONFLICT
 	CONNECTION CONSTRAINT CONSTRAINTS CONTENT_P CONTINUE_P CONVERSION_P COPY
 	COST CREATE CROSS CSV CUBE CURRENT_P
 	CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
@@ -707,8 +718,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	DETACH DICTIONARY DISABLE_P DISCARD DISTINCT DO DOCUMENT_P DOMAIN_P
 	DOUBLE_P DROP
 
-	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ESCAPE EVENT EXCEPT
-	EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXPRESSION
+	EACH ELSE EMPTY_P ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ERROR_P ESCAPE
+	EVENT EXCEPT EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXPRESSION
 	EXTENSION EXTERNAL EXTRACT
 
 	FALSE_P FAMILY FETCH FILTER FINALIZE FIRST_P FLOAT_P FOLLOWING FOR
@@ -723,16 +734,16 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD INT_P INTEGER
 	INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
 
-	JOIN JSON JSON_ARRAY JSON_ARRAYAGG JSON_OBJECT JSON_OBJECTAGG
-	JSON_SCALAR JSON_SERIALIZE
+	JOIN JSON JSON_ARRAY JSON_ARRAYAGG JSON_EXISTS JSON_OBJECT JSON_OBJECTAGG
+	JSON_QUERY JSON_SCALAR JSON_SERIALIZE JSON_VALUE
 
-	KEY KEYS
+	KEEP KEY KEYS
 
 	LABEL LANGUAGE LARGE_P LAST_P LATERAL_P
 	LEADING LEAKPROOF LEAST LEFT LEVEL LIKE LIMIT LISTEN LOAD LOCAL
 	LOCALTIME LOCALTIMESTAMP LOCATION LOCK_P LOCKED LOGGED
 
-	MAPPING MATCH MATCHED MATERIALIZED MAXVALUE MERGE METHOD
+	MAPPING MATCH MATCHED MATERIALIZED MAXVALUE MERGE MERGE_ACTION METHOD
 	MINUTE_P MINVALUE MODE MONTH_P MOVE
 
 	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NFC NFD NFKC NFKD NO NONE
@@ -740,16 +751,16 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
 	NULLS_P NUMERIC
 
-	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OPTIONS OR
+	OBJECT_P OF OFF OFFSET OIDS OLD OMIT ON ONLY OPERATOR OPTION OPTIONS OR
 	ORDER ORDINALITY OTHERS OUT_P OUTER_P
 	OVER OVERLAPS OVERLAY OVERRIDING OWNED OWNER
 
 	PARALLEL PARAMETER PARSER PARTIAL PARTITION PASSING PASSWORD
-	PLACING PLANS POLICY
+	PERIOD PLACING PLANS POLICY
 	POSITION PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROCEDURES PROGRAM PUBLICATION
 
-	QUOTE
+	QUOTE QUOTES
 
 	RANGE READ REAL REASSIGN RECHECK RECURSIVE REF_P REFERENCES REFERENCING
 	REFRESH REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA
@@ -760,7 +771,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	SEQUENCE SEQUENCES
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF SHARE SHOW
 	SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SQL_P STABLE STANDALONE_P
-	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRIP_P
+	START STATEMENT STATISTICS STDIN STDOUT STORAGE STORED STRICT_P STRING_P STRIP_P
 	SUBSCRIPTION SUBSTRING SUPPORT SYMMETRIC SYSID SYSTEM_P SYSTEM_USER
 
 	TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P THEN
@@ -768,7 +779,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	TREAT TRIGGER TRIM TRUE_P
 	TRUNCATE TRUSTED TYPE_P TYPES_P
 
-	UESCAPE UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN
+	UESCAPE UNBOUNDED UNCONDITIONAL UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN
 	UNLISTEN UNLOGGED UNTIL UPDATE USER USING
 
 	VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARIADIC VARYING
@@ -2859,8 +2870,8 @@ alter_table_cmd:
 					n->newowner = $3;
 					$$ = (Node *) n;
 				}
-			/* ALTER TABLE <name> SET ACCESS METHOD <amname> */
-			| SET ACCESS METHOD name
+			/* ALTER TABLE <name> SET ACCESS METHOD { <amname> | DEFAULT } */
+			| SET ACCESS METHOD set_access_method_name
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
@@ -3073,6 +3084,11 @@ alter_identity_column_option:
 
 set_statistics_value:
 			SignedIconst					{ $$ = (Node *) makeInteger($1); }
+			| DEFAULT						{ $$ = NULL; }
+		;
+
+set_access_method_name:
+			ColId							{ $$ = $1; }
 			| DEFAULT						{ $$ = NULL; }
 		;
 
@@ -4222,21 +4238,31 @@ ConstraintElem:
 								   NULL, yyscanner);
 					$$ = (Node *) n;
 				}
-			| FOREIGN KEY '(' columnList ')' REFERENCES qualified_name
-				opt_column_list key_match key_actions ConstraintAttributeSpec
+			| FOREIGN KEY '(' columnList optionalPeriodName ')' REFERENCES qualified_name
+				opt_column_and_period_list key_match key_actions ConstraintAttributeSpec
 				{
 					Constraint *n = makeNode(Constraint);
 
 					n->contype = CONSTR_FOREIGN;
 					n->location = @1;
-					n->pktable = $7;
+					n->pktable = $8;
 					n->fk_attrs = $4;
-					n->pk_attrs = $8;
-					n->fk_matchtype = $9;
-					n->fk_upd_action = ($10)->updateAction->action;
-					n->fk_del_action = ($10)->deleteAction->action;
-					n->fk_del_set_cols = ($10)->deleteAction->cols;
-					processCASbits($11, @11, "FOREIGN KEY",
+					if ($5)
+					{
+						n->fk_attrs = lappend(n->fk_attrs, $5);
+						n->fk_with_period = true;
+					}
+					n->pk_attrs = linitial($9);
+					if (lsecond($9))
+					{
+						n->pk_attrs = lappend(n->pk_attrs, lsecond($9));
+						n->pk_with_period = true;
+					}
+					n->fk_matchtype = $10;
+					n->fk_upd_action = ($11)->updateAction->action;
+					n->fk_del_action = ($11)->deleteAction->action;
+					n->fk_del_set_cols = ($11)->deleteAction->cols;
+					processCASbits($12, @12, "FOREIGN KEY",
 								   &n->deferrable, &n->initdeferred,
 								   &n->skip_validation, NULL,
 								   yyscanner);
@@ -4262,6 +4288,16 @@ opt_column_list:
 columnList:
 			columnElem								{ $$ = list_make1($1); }
 			| columnList ',' columnElem				{ $$ = lappend($1, $3); }
+		;
+
+optionalPeriodName:
+			',' PERIOD columnElem { $$ = $3; }
+			| /*EMPTY*/               { $$ = NULL; }
+	;
+
+opt_column_and_period_list:
+			'(' columnList optionalPeriodName ')'			{ $$ = list_make2($2, $3); }
+			| /*EMPTY*/								{ $$ = list_make2(NIL, NULL); }
 		;
 
 columnElem: ColId
@@ -4604,7 +4640,7 @@ stats_param:	ColId
  *****************************************************************************/
 
 AlterStatsStmt:
-			ALTER STATISTICS any_name SET STATISTICS SignedIconst
+			ALTER STATISTICS any_name SET STATISTICS set_statistics_value
 				{
 					AlterStatsStmt *n = makeNode(AlterStatsStmt);
 
@@ -4613,7 +4649,7 @@ AlterStatsStmt:
 					n->stxstattarget = $6;
 					$$ = (Node *) n;
 				}
-			| ALTER STATISTICS IF_P EXISTS any_name SET STATISTICS SignedIconst
+			| ALTER STATISTICS IF_P EXISTS any_name SET STATISTICS set_statistics_value
 				{
 					AlterStatsStmt *n = makeNode(AlterStatsStmt);
 
@@ -12368,6 +12404,7 @@ MergeStmt:
 			USING table_ref
 			ON a_expr
 			merge_when_list
+			returning_clause
 				{
 					MergeStmt  *m = makeNode(MergeStmt);
 
@@ -12376,6 +12413,7 @@ MergeStmt:
 					m->sourceRelation = $6;
 					m->joinCondition = $8;
 					m->mergeWhenClauses = $9;
+					m->returningList = $10;
 
 					$$ = (Node *) m;
 				}
@@ -15789,6 +15827,70 @@ func_expr_common_subexpr:
 					n->location = @1;
 					$$ = (Node *) n;
 				}
+			| MERGE_ACTION '(' ')'
+				{
+					MergeSupportFunc *m = makeNode(MergeSupportFunc);
+
+					m->msftype = TEXTOID;
+					m->location = @1;
+					$$ = (Node *) m;
+				}
+			| JSON_QUERY '('
+				json_value_expr ',' a_expr json_passing_clause_opt
+				json_returning_clause_opt
+				json_wrapper_behavior
+				json_quotes_clause_opt
+				json_behavior_clause_opt
+			')'
+				{
+					JsonFuncExpr *n = makeNode(JsonFuncExpr);
+
+					n->op = JSON_QUERY_OP;
+					n->context_item = (JsonValueExpr *) $3;
+					n->pathspec = $5;
+					n->passing = $6;
+					n->output = (JsonOutput *) $7;
+					n->wrapper = $8;
+					n->quotes = $9;
+					n->on_empty = (JsonBehavior *) linitial($10);
+					n->on_error = (JsonBehavior *) lsecond($10);
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| JSON_EXISTS '('
+				json_value_expr ',' a_expr json_passing_clause_opt
+				json_on_error_clause_opt
+			')'
+				{
+					JsonFuncExpr *n = makeNode(JsonFuncExpr);
+
+					n->op = JSON_EXISTS_OP;
+					n->context_item = (JsonValueExpr *) $3;
+					n->pathspec = $5;
+					n->passing = $6;
+					n->output = NULL;
+					n->on_error = (JsonBehavior *) $7;
+					n->location = @1;
+					$$ = (Node *) n;
+				}
+			| JSON_VALUE '('
+				json_value_expr ',' a_expr json_passing_clause_opt
+				json_returning_clause_opt
+				json_behavior_clause_opt
+			')'
+				{
+					JsonFuncExpr *n = makeNode(JsonFuncExpr);
+
+					n->op = JSON_VALUE_OP;
+					n->context_item = (JsonValueExpr *) $3;
+					n->pathspec = $5;
+					n->passing = $6;
+					n->output = (JsonOutput *) $7;
+					n->on_empty = (JsonBehavior *) linitial($8);
+					n->on_error = (JsonBehavior *) lsecond($8);
+					n->location = @1;
+					$$ = (Node *) n;
+				}
 			;
 
 
@@ -16515,6 +16617,77 @@ opt_asymmetric: ASYMMETRIC
 		;
 
 /* SQL/JSON support */
+json_passing_clause_opt:
+			PASSING json_arguments					{ $$ = $2; }
+			| /*EMPTY*/								{ $$ = NIL; }
+		;
+
+json_arguments:
+			json_argument							{ $$ = list_make1($1); }
+			| json_arguments ',' json_argument		{ $$ = lappend($1, $3); }
+		;
+
+json_argument:
+			json_value_expr AS ColLabel
+			{
+				JsonArgument *n = makeNode(JsonArgument);
+
+				n->val = (JsonValueExpr *) $1;
+				n->name = $3;
+				$$ = (Node *) n;
+			}
+		;
+
+/* ARRAY is a noise word */
+json_wrapper_behavior:
+			  WITHOUT WRAPPER					{ $$ = JSW_NONE; }
+			| WITHOUT ARRAY	WRAPPER				{ $$ = JSW_NONE; }
+			| WITH WRAPPER						{ $$ = JSW_UNCONDITIONAL; }
+			| WITH ARRAY WRAPPER				{ $$ = JSW_UNCONDITIONAL; }
+			| WITH CONDITIONAL ARRAY WRAPPER	{ $$ = JSW_CONDITIONAL; }
+			| WITH UNCONDITIONAL ARRAY WRAPPER	{ $$ = JSW_UNCONDITIONAL; }
+			| WITH CONDITIONAL WRAPPER			{ $$ = JSW_CONDITIONAL; }
+			| WITH UNCONDITIONAL WRAPPER		{ $$ = JSW_UNCONDITIONAL; }
+			| /* empty */						{ $$ = JSW_UNSPEC; }
+		;
+
+json_behavior:
+			DEFAULT a_expr
+				{ $$ = (Node *) makeJsonBehavior(JSON_BEHAVIOR_DEFAULT, $2, @1); }
+			| json_behavior_type
+				{ $$ = (Node *) makeJsonBehavior($1, NULL, @1); }
+		;
+
+json_behavior_type:
+			ERROR_P		{ $$ = JSON_BEHAVIOR_ERROR; }
+			| NULL_P	{ $$ = JSON_BEHAVIOR_NULL; }
+			| TRUE_P	{ $$ = JSON_BEHAVIOR_TRUE; }
+			| FALSE_P	{ $$ = JSON_BEHAVIOR_FALSE; }
+			| UNKNOWN	{ $$ = JSON_BEHAVIOR_UNKNOWN; }
+			| EMPTY_P ARRAY	{ $$ = JSON_BEHAVIOR_EMPTY_ARRAY; }
+			| EMPTY_P OBJECT_P	{ $$ = JSON_BEHAVIOR_EMPTY_OBJECT; }
+			/* non-standard, for Oracle compatibility only */
+			| EMPTY_P	{ $$ = JSON_BEHAVIOR_EMPTY_ARRAY; }
+		;
+
+json_behavior_clause_opt:
+			json_behavior ON EMPTY_P
+				{ $$ = list_make2($1, NULL); }
+			| json_behavior ON ERROR_P
+				{ $$ = list_make2(NULL, $1); }
+			| json_behavior ON EMPTY_P json_behavior ON ERROR_P
+				{ $$ = list_make2($1, $4); }
+			| /* EMPTY */
+				{ $$ = list_make2(NULL, NULL); }
+		;
+
+json_on_error_clause_opt:
+			json_behavior ON ERROR_P
+				{ $$ = $1; }
+			| /* EMPTY */
+				{ $$ = NULL; }
+		;
+
 json_value_expr:
 			a_expr json_format_clause_opt
 			{
@@ -16557,6 +16730,14 @@ json_format_clause_opt:
 				{
 					$$ = (Node *) makeJsonFormat(JS_FORMAT_DEFAULT, JS_ENC_DEFAULT, -1);
 				}
+		;
+
+json_quotes_clause_opt:
+			KEEP QUOTES ON SCALAR STRING_P		{ $$ = JS_QUOTES_KEEP; }
+			| KEEP QUOTES						{ $$ = JS_QUOTES_KEEP; }
+			| OMIT QUOTES ON SCALAR STRING_P	{ $$ = JS_QUOTES_OMIT; }
+			| OMIT QUOTES						{ $$ = JS_QUOTES_OMIT; }
+			| /* EMPTY */						{ $$ = JS_QUOTES_UNSPEC; }
 		;
 
 json_returning_clause_opt:
@@ -17175,6 +17356,7 @@ unreserved_keyword:
 			| COMMIT
 			| COMMITTED
 			| COMPRESSION
+			| CONDITIONAL
 			| CONFIGURATION
 			| CONFLICT
 			| CONNECTION
@@ -17211,10 +17393,12 @@ unreserved_keyword:
 			| DOUBLE_P
 			| DROP
 			| EACH
+			| EMPTY_P
 			| ENABLE_P
 			| ENCODING
 			| ENCRYPTED
 			| ENUM_P
+			| ERROR_P
 			| ESCAPE
 			| EVENT
 			| EXCLUDE
@@ -17264,6 +17448,7 @@ unreserved_keyword:
 			| INSTEAD
 			| INVOKER
 			| ISOLATION
+			| KEEP
 			| KEY
 			| KEYS
 			| LABEL
@@ -17310,6 +17495,7 @@ unreserved_keyword:
 			| OFF
 			| OIDS
 			| OLD
+			| OMIT
 			| OPERATOR
 			| OPTION
 			| OPTIONS
@@ -17326,6 +17512,7 @@ unreserved_keyword:
 			| PARTITION
 			| PASSING
 			| PASSWORD
+			| PERIOD
 			| PLANS
 			| POLICY
 			| PRECEDING
@@ -17340,6 +17527,7 @@ unreserved_keyword:
 			| PROGRAM
 			| PUBLICATION
 			| QUOTE
+			| QUOTES
 			| RANGE
 			| READ
 			| REASSIGN
@@ -17399,6 +17587,7 @@ unreserved_keyword:
 			| STORAGE
 			| STORED
 			| STRICT_P
+			| STRING_P
 			| STRIP_P
 			| SUBSCRIPTION
 			| SUPPORT
@@ -17421,6 +17610,7 @@ unreserved_keyword:
 			| UESCAPE
 			| UNBOUNDED
 			| UNCOMMITTED
+			| UNCONDITIONAL
 			| UNENCRYPTED
 			| UNKNOWN
 			| UNLISTEN
@@ -17481,11 +17671,15 @@ col_name_keyword:
 			| JSON
 			| JSON_ARRAY
 			| JSON_ARRAYAGG
+			| JSON_EXISTS
 			| JSON_OBJECT
 			| JSON_OBJECTAGG
+			| JSON_QUERY
 			| JSON_SCALAR
 			| JSON_SERIALIZE
+			| JSON_VALUE
 			| LEAST
+			| MERGE_ACTION
 			| NATIONAL
 			| NCHAR
 			| NONE
@@ -17717,6 +17911,7 @@ bare_label_keyword:
 			| COMMITTED
 			| COMPRESSION
 			| CONCURRENTLY
+			| CONDITIONAL
 			| CONFIGURATION
 			| CONFLICT
 			| CONNECTION
@@ -17769,11 +17964,13 @@ bare_label_keyword:
 			| DROP
 			| EACH
 			| ELSE
+			| EMPTY_P
 			| ENABLE_P
 			| ENCODING
 			| ENCRYPTED
 			| END_P
 			| ENUM_P
+			| ERROR_P
 			| ESCAPE
 			| EVENT
 			| EXCLUDE
@@ -17843,10 +18040,14 @@ bare_label_keyword:
 			| JSON
 			| JSON_ARRAY
 			| JSON_ARRAYAGG
+			| JSON_EXISTS
 			| JSON_OBJECT
 			| JSON_OBJECTAGG
+			| JSON_QUERY
 			| JSON_SCALAR
 			| JSON_SERIALIZE
+			| JSON_VALUE
+			| KEEP
 			| KEY
 			| KEYS
 			| LABEL
@@ -17875,6 +18076,7 @@ bare_label_keyword:
 			| MATERIALIZED
 			| MAXVALUE
 			| MERGE
+			| MERGE_ACTION
 			| METHOD
 			| MINVALUE
 			| MODE
@@ -17907,6 +18109,7 @@ bare_label_keyword:
 			| OFF
 			| OIDS
 			| OLD
+			| OMIT
 			| ONLY
 			| OPERATOR
 			| OPTION
@@ -17927,6 +18130,7 @@ bare_label_keyword:
 			| PARTITION
 			| PASSING
 			| PASSWORD
+			| PERIOD
 			| PLACING
 			| PLANS
 			| POLICY
@@ -17944,6 +18148,7 @@ bare_label_keyword:
 			| PROGRAM
 			| PUBLICATION
 			| QUOTE
+			| QUOTES
 			| RANGE
 			| READ
 			| REAL
@@ -18012,6 +18217,7 @@ bare_label_keyword:
 			| STORAGE
 			| STORED
 			| STRICT_P
+			| STRING_P
 			| STRIP_P
 			| SUBSCRIPTION
 			| SUBSTRING
@@ -18046,6 +18252,7 @@ bare_label_keyword:
 			| UESCAPE
 			| UNBOUNDED
 			| UNCOMMITTED
+			| UNCONDITIONAL
 			| UNENCRYPTED
 			| UNIQUE
 			| UNKNOWN
